@@ -39,9 +39,9 @@ fetch_latest_version() {
   local version
 
   if command -v curl &>/dev/null; then
-    version="$(curl -fsSL "$url" | grep '"tag_name"' | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/')"
+    version="$(curl -fsSL "$url" | grep '"tag_name"' | cut -d '"' -f 4)"
   elif command -v wget &>/dev/null; then
-    version="$(wget -qO- "$url" | grep '"tag_name"' | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/')"
+    version="$(wget -qO- "$url" | grep '"tag_name"' | cut -d '"' -f 4)"
   else
     error "curl or wget is required"
   fi
