@@ -1,4 +1,4 @@
-# a2ahoy
+# A2Ahoy
 
 A Go CLI tool for interacting with [A2A (Agent-to-Agent)](https://google.github.io/A2A/) protocol agents.
 
