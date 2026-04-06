@@ -38,6 +38,7 @@ func TestRootCommand_HasPersistentFlags(t *testing.T) {
 	}{
 		{"gcp-auth"},
 		{"json"},
+		{"vertex-ai"},
 	}
 	for _, tt := range tests {
 		f := rootCmd.PersistentFlags().Lookup(tt.flag)

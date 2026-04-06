@@ -67,10 +67,10 @@ func (e *Endpoint) StreamURL() string {
 
 // TaskURL returns the URL for retrieving a specific task by ID.
 func (e *Endpoint) TaskURL(taskID string) string {
-	return e.base + "/a2a/v1/tasks/" + taskID
+	return e.base + "/a2a/v1/tasks/" + url.PathEscape(taskID)
 }
 
 // CancelTaskURL returns the URL for cancelling a specific task.
 func (e *Endpoint) CancelTaskURL(taskID string) string {
-	return e.base + "/a2a/v1/tasks/" + taskID + ":cancel"
+	return e.base + "/a2a/v1/tasks/" + url.PathEscape(taskID) + ":cancel"
 }

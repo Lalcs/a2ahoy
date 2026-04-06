@@ -34,10 +34,12 @@ func TestGetToken_Success(t *testing.T) {
 	}
 }
 
+var errTokenSourceFailure = errors.New("token source failure")
+
 func TestGetToken_Error(t *testing.T) {
 	interceptor := &GCPAuthInterceptor{
 		tokenSource: &mockTokenSource{
-			err: errors.New("token source failure"),
+			err: errTokenSourceFailure,
 		},
 	}
 
@@ -45,8 +47,8 @@ func TestGetToken_Error(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !errors.Is(err, err) {
-		t.Errorf("unexpected error: %v", err)
+	if !errors.Is(err, errTokenSourceFailure) {
+		t.Errorf("expected wrapped error containing %v, got: %v", errTokenSourceFailure, err)
 	}
 }
 
@@ -81,10 +83,12 @@ func TestBefore_Success(t *testing.T) {
 	}
 }
 
+var errTokenFailure = errors.New("token failure")
+
 func TestBefore_Error(t *testing.T) {
 	interceptor := &GCPAuthInterceptor{
 		tokenSource: &mockTokenSource{
-			err: errors.New("token failure"),
+			err: errTokenFailure,
 		},
 	}
 
@@ -96,8 +100,8 @@ func TestBefore_Error(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !errors.Is(err, err) {
-		t.Errorf("unexpected error: %v", err)
+	if !errors.Is(err, errTokenFailure) {
+		t.Errorf("expected wrapped error containing %v, got: %v", errTokenFailure, err)
 	}
 
 	// Authorization header should NOT be set on error

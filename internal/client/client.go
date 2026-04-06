@@ -53,7 +53,8 @@ func newVertexAI(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 
 // newStandard creates a standard A2A client.
 func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, error) {
-	resolveOpts := []agentcard.ResolveOption{}
+	var resolveOpts []agentcard.ResolveOption
+	var clientOpts []a2aclient.FactoryOption
 
 	if opts.GCPAuth {
 		interceptor, err := auth.NewGCPAuthInterceptor(ctx, opts.BaseURL)
@@ -61,22 +62,12 @@ func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 			return nil, nil, fmt.Errorf("failed to create GCP auth: %w", err)
 		}
 
-		token, tokenErr := interceptor.GetToken()
-		if tokenErr != nil {
-			return nil, nil, fmt.Errorf("failed to obtain initial token: %w", tokenErr)
+		token, err := interceptor.GetToken()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to obtain initial token: %w", err)
 		}
 		resolveOpts = append(resolveOpts, agentcard.WithRequestHeader("Authorization", "Bearer "+token))
-
-		card, err := agentcard.DefaultResolver.Resolve(ctx, opts.BaseURL, resolveOpts...)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to resolve agent card: %w", err)
-		}
-
-		client, err := a2aclient.NewFromCard(ctx, card, a2aclient.WithCallInterceptors(interceptor))
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create A2A client: %w", err)
-		}
-		return client, card, nil
+		clientOpts = append(clientOpts, a2aclient.WithCallInterceptors(interceptor))
 	}
 
 	card, err := agentcard.DefaultResolver.Resolve(ctx, opts.BaseURL, resolveOpts...)
@@ -84,7 +75,7 @@ func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 		return nil, nil, fmt.Errorf("failed to resolve agent card: %w", err)
 	}
 
-	client, err := a2aclient.NewFromCard(ctx, card)
+	client, err := a2aclient.NewFromCard(ctx, card, clientOpts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create A2A client: %w", err)
 	}
