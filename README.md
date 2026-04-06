@@ -13,7 +13,7 @@ a2ahoy provides a simple command-line interface to communicate with A2A-compatib
 ### From source
 
 ```bash
-go install github.com/khayashi/a2ahoy@latest
+go install github.com/Lalcs/a2ahoy@latest
 ```
 
 ### Build locally
