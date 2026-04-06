@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.1"
+          cache: true
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::The following files need formatting:"
+            echo "$unformatted"
+            echo ""
+            gofmt -d .
+            exit 1
+          fi
+
+      - name: Vet
+        run: make vet
+
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+      - name: Lint
+        run: make lint
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.1"
+          cache: true
+
+      - name: Run tests with coverage
+        run: make test-cover
+
+      - name: Coverage summary
+        run: go tool cover -func=build/coverage.out
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            build/coverage.out
+            build/coverage.html
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.1"
+          cache: true
+
+      - name: Check module tidiness
+        run: |
+          make tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Build
+        run: make build
+
+      - name: Smoke test
+        run: ./build/a2ahoy --help
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: a2ahoy
+          path: build/a2ahoy

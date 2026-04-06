@@ -1,0 +1,18 @@
+# Build
+build/
+a2ahoy
+
+# IDE
+.idea/
+
+# Credentials
+credentials/
+
+# OS
+.DS_Store
+
+# Temp
+.temp/
+
+# Local issues
+.issues/

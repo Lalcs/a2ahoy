@@ -1,93 +1,166 @@
 # a2ahoy
 
+A Go CLI tool for interacting with [A2A (Agent-to-Agent)](https://google.github.io/A2A/) protocol agents.
 
+## Overview
 
-## Getting started
-
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://repository.fhevalec.jp/khayashi/a2ahoy.git
-git branch -M main
-git push -uf origin main
-```
-
-## Integrate with your tools
-
-* [Set up project integrations](https://repository.fhevalec.jp/khayashi/a2ahoy/-/settings/integrations)
-
-## Collaborate with your team
-
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+a2ahoy provides a simple command-line interface to communicate with A2A-compatible agents. It supports fetching agent cards, sending messages, and streaming responses via SSE — with optional GCP authentication. It also supports [Vertex AI Agent Engine](https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview) endpoints with automatic protocol translation.
 
 ## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+
+### From source
+
+```bash
+go install github.com/khayashi/a2ahoy@latest
+```
+
+### Build locally
+
+```bash
+git clone https://repository.fhevalec.jp/khayashi/a2ahoy.git
+cd a2ahoy
+go build -o a2ahoy .
+```
 
 ## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+### `card` — Fetch an agent card
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+Retrieves and displays the agent's card from `/.well-known/agent-card.json`.
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+```bash
+a2ahoy card https://example.com
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+### `send` — Send a message
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+Sends a message to an agent via the `message/send` JSON-RPC method.
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+```bash
+a2ahoy send https://example.com "Hello, agent!"
+```
 
-## License
-For open source projects, say how it is licensed.
+### `stream` — Stream a message
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Sends a message and streams the response via SSE (`message/stream`).
+
+```bash
+a2ahoy stream https://example.com "Tell me a story"
+```
+
+Press `Ctrl+C` to gracefully interrupt a streaming session.
+
+## Global Flags
+
+| Flag | Description |
+|------|-------------|
+| `--gcp-auth` | Enable GCP Application Default Credentials authentication (injects an ID token as a Bearer header) |
+| `--vertex-ai` | Treat the URL as a Vertex AI Agent Engine endpoint (uses OAuth2 access token, Protobuf JSON format) |
+| `--json` | Output raw indented JSON instead of human-readable format |
+
+### Examples
+
+```bash
+# Fetch a card with GCP authentication
+a2ahoy card --gcp-auth https://my-agent.run.app
+
+# Send a message and get raw JSON output
+a2ahoy send --json https://example.com "What can you do?"
+
+# Stream with GCP auth
+a2ahoy stream --gcp-auth https://my-agent.run.app "Summarize this document"
+```
+
+### Vertex AI Agent Engine
+
+Use the `--vertex-ai` flag to interact with agents deployed on Vertex AI Agent Engine (Reasoning Engine). This automatically handles the protocol differences: OAuth2 access tokens, Protobuf JSON format, and Vertex AI-specific endpoint paths.
+
+```bash
+# Set up credentials
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+
+# Fetch agent card from Vertex AI
+a2ahoy card --vertex-ai \
+  "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/MY_PROJECT/locations/us-central1/reasoningEngines/ENGINE_ID"
+
+# Send a message to a Vertex AI agent
+a2ahoy send --vertex-ai \
+  "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/MY_PROJECT/locations/us-central1/reasoningEngines/ENGINE_ID" \
+  "Hello, agent!"
+
+# Stream a response from a Vertex AI agent
+a2ahoy stream --vertex-ai \
+  "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/MY_PROJECT/locations/us-central1/reasoningEngines/ENGINE_ID" \
+  "Tell me a story"
+```
+
+> **Note**: URLs with `/v1/` are automatically normalized to `/v1beta1/` (required for A2A endpoints). See [docs/vertex-ai-a2a.md](docs/vertex-ai-a2a.md) for detailed protocol differences.
+
+## Architecture
+
+```
+main.go                      # Entry point
+internal/
+├── cmd/                     # Cobra command definitions
+│   ├── root.go              # Root command + global flags
+│   ├── card.go              # card subcommand
+│   ├── send.go              # send subcommand
+│   └── stream.go            # stream subcommand
+├── client/                  # A2A client factory
+│   ├── a2a_client.go        # A2AClient interface (shared by standard & Vertex AI)
+│   └── client.go            # Factory: resolves agent card, wires auth
+├── auth/                    # GCP authentication
+│   ├── gcp.go               # ID token interceptor (standard A2A)
+│   └── gcp_access_token.go  # OAuth2 access token interceptor (Vertex AI)
+├── vertexai/                # Vertex AI Agent Engine support
+│   ├── endpoint.go          # URL parsing & normalization
+│   ├── wire.go              # Wire format types & a2a type conversion
+│   └── client.go            # Vertex AI HTTP client
+└── presenter/               # Output formatting
+    ├── json.go              # --json output (indented JSON)
+    ├── card.go              # Human-readable agent card display
+    ├── task.go              # Human-readable task/message/artifact display
+    └── stream.go            # Human-readable SSE event display
+```
+
+### Data Flow
+
+**Standard A2A:**
+1. Cobra parses CLI args and flags
+2. `client.New()` resolves the agent card via `/.well-known/agent-card.json`, optionally with `GCPAuthInterceptor`
+3. The `a2aclient.Client` method is invoked (`SendMessage` or `SendStreamingMessage`)
+4. Results are passed to the `presenter` package for formatted output
+
+**Vertex AI (`--vertex-ai`):**
+1. Cobra parses CLI args and flags
+2. `client.New()` creates a `vertexai.Client` with OAuth2 access token auth
+3. The Vertex AI client fetches the agent card from `/a2a/v1/card`
+4. Messages are sent in Protobuf JSON format to `/a2a/v1/message:send` (or `:stream`)
+5. Responses are converted back to standard `a2a.*` types
+6. Results are passed to the `presenter` package (same as standard flow)
+
+## Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| [a2a-go/v2](https://github.com/a2aproject/a2a-go) | A2A protocol client |
+| [cobra](https://github.com/spf13/cobra) | CLI framework |
+| [google.golang.org/api/idtoken](https://pkg.go.dev/google.golang.org/api/idtoken) | GCP ID token generation |
+| [golang.org/x/oauth2/google](https://pkg.go.dev/golang.org/x/oauth2/google) | GCP OAuth2 access token (Vertex AI) |
+
+## Development
+
+```bash
+# Run all tests
+go test ./...
+
+# Run tests for a specific package
+go test ./internal/presenter/...
+go test ./internal/vertexai/...
+
+# Build
+go build -o a2ahoy .
+
+# Run directly
+go run . <command> [flags] [args]
+```

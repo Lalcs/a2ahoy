@@ -1,0 +1,192 @@
+package vertexai
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"iter"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/a2aproject/a2a-go/v2/a2a"
+)
+
+// Client communicates with a Vertex AI Agent Engine A2A endpoint.
+// It translates between standard a2a.* types and the Vertex AI
+// Protobuf JSON wire format.
+type Client struct {
+	httpClient *http.Client
+	endpoint   *Endpoint
+	getToken   func() (string, error)
+}
+
+// NewClient creates a Vertex AI A2A client.
+// getToken is called before each request to obtain a fresh OAuth2 access token.
+func NewClient(endpoint *Endpoint, getToken func() (string, error)) *Client {
+	return &Client{
+		httpClient: &http.Client{Timeout: 5 * time.Minute},
+		endpoint:   endpoint,
+		getToken:   getToken,
+	}
+}
+
+// FetchCard retrieves the Agent Card from the Vertex AI A2A card endpoint.
+func (c *Client) FetchCard(ctx context.Context) (*a2a.AgentCard, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, c.endpoint.CardURL(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("card request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, readErrorResponse(resp)
+	}
+
+	var card a2a.AgentCard
+	if err := json.NewDecoder(resp.Body).Decode(&card); err != nil {
+		return nil, fmt.Errorf("failed to decode agent card: %w", err)
+	}
+	return &card, nil
+}
+
+// SendMessage sends a message to the Vertex AI A2A endpoint and returns
+// the completed task. It always sends with blocking: true.
+func (c *Client) SendMessage(ctx context.Context, a2aReq *a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+	wireReq := buildSendRequest(a2aReq.Message)
+
+	body, err := json.Marshal(wireReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := c.newRequest(ctx, http.MethodPost, c.endpoint.SendURL(), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("send request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, readErrorResponse(resp)
+	}
+
+	var wireResp sendResponse
+	if err := json.NewDecoder(resp.Body).Decode(&wireResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return toA2ATask(wireResp.Task), nil
+}
+
+// SendStreamingMessage sends a message to the Vertex AI streaming endpoint
+// and yields events as they arrive. Each SSE data line is parsed as a JSON
+// object and converted to an a2a.Event.
+func (c *Client) SendStreamingMessage(ctx context.Context, a2aReq *a2a.SendMessageRequest) iter.Seq2[a2a.Event, error] {
+	return func(yield func(a2a.Event, error) bool) {
+		wireReq := buildSendRequest(a2aReq.Message)
+
+		body, err := json.Marshal(wireReq)
+		if err != nil {
+			yield(nil, fmt.Errorf("failed to marshal request: %w", err))
+			return
+		}
+
+		req, err := c.newRequest(ctx, http.MethodPost, c.endpoint.StreamURL(), bytes.NewReader(body))
+		if err != nil {
+			yield(nil, err)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "text/event-stream")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			yield(nil, fmt.Errorf("stream request failed: %w", err))
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			yield(nil, readErrorResponse(resp))
+			return
+		}
+
+		// Parse SSE stream: each "data: ..." line is a JSON event.
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			// Skip empty lines and non-data lines.
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+
+			data := strings.TrimPrefix(line, "data:")
+			data = strings.TrimSpace(data)
+			if data == "" {
+				continue
+			}
+
+			// Try to parse as a task response (most common).
+			var wireResp sendResponse
+			if err := json.Unmarshal([]byte(data), &wireResp); err != nil {
+				if !yield(nil, fmt.Errorf("failed to decode stream event: %w", err)) {
+					return
+				}
+				continue
+			}
+
+			task := toA2ATask(wireResp.Task)
+			if !yield(task, nil) {
+				return
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			yield(nil, fmt.Errorf("stream read error: %w", err))
+		}
+	}
+}
+
+// Destroy is a no-op for the Vertex AI client (no persistent resources).
+func (c *Client) Destroy() error {
+	return nil
+}
+
+// newRequest creates an HTTP request with the authorization header set.
+func (c *Client) newRequest(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	token, err := c.getToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to obtain access token: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	return req, nil
+}
+
+// readErrorResponse reads the response body and returns a descriptive error.
+func readErrorResponse(resp *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+}
