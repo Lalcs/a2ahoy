@@ -10,6 +10,18 @@ a2ahoy provides a simple command-line interface to communicate with A2A-compatib
 
 ## Installation
 
+### Quick install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/install.sh | bash
+```
+
+This automatically detects your OS/architecture and installs the latest release to `/usr/local/bin`. To change the install directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/install.sh | INSTALL_DIR=~/.local/bin bash
+```
+
 ### From source
 
 ```bash
