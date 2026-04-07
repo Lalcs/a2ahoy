@@ -332,3 +332,86 @@ func TestResolveCard_WithHeaders_InvalidEntry(t *testing.T) {
 		t.Errorf("expected ErrInvalidHeader, got: %v", err)
 	}
 }
+
+func TestNew_WithBearerToken(t *testing.T) {
+	var captured http.Header
+	ts := newHeaderCaptureServer(t, v1CardJSON, &captured)
+	defer ts.Close()
+
+	ctx := context.Background()
+	a2aClient, _, err := New(ctx, Options{
+		BaseURL:     ts.URL,
+		BearerToken: "test-bearer-token",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer a2aClient.Destroy()
+
+	if got := captured.Get("Authorization"); got != "Bearer test-bearer-token" {
+		t.Errorf("Authorization: got %q, want %q", got, "Bearer test-bearer-token")
+	}
+}
+
+func TestNew_WithBearerToken_EmptyTokenIgnored(t *testing.T) {
+	var captured http.Header
+	ts := newHeaderCaptureServer(t, v1CardJSON, &captured)
+	defer ts.Close()
+
+	ctx := context.Background()
+	a2aClient, _, err := New(ctx, Options{
+		BaseURL:     ts.URL,
+		BearerToken: "",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer a2aClient.Destroy()
+
+	// Empty BearerToken must be treated as "not set" and must not inject
+	// an Authorization header.
+	if got := captured.Get("Authorization"); got != "" {
+		t.Errorf("Authorization should be empty, got %q", got)
+	}
+}
+
+func TestResolveCard_WithBearerToken(t *testing.T) {
+	var captured http.Header
+	ts := newHeaderCaptureServer(t, v1CardJSON, &captured)
+	defer ts.Close()
+
+	ctx := context.Background()
+	card, err := ResolveCard(ctx, Options{
+		BaseURL:     ts.URL,
+		BearerToken: "resolve-card-token",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card == nil {
+		t.Fatal("card should not be nil")
+	}
+
+	if got := captured.Get("Authorization"); got != "Bearer resolve-card-token" {
+		t.Errorf("Authorization: got %q, want %q", got, "Bearer resolve-card-token")
+	}
+}
+
+func TestResolveCard_WithBearerToken_EmptyTokenIgnored(t *testing.T) {
+	var captured http.Header
+	ts := newHeaderCaptureServer(t, v1CardJSON, &captured)
+	defer ts.Close()
+
+	ctx := context.Background()
+	_, err := ResolveCard(ctx, Options{
+		BaseURL:     ts.URL,
+		BearerToken: "",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := captured.Get("Authorization"); got != "" {
+		t.Errorf("Authorization should be empty, got %q", got)
+	}
+}

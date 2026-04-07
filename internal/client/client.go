@@ -20,6 +20,9 @@ type Options struct {
 	// Headers holds raw "KEY=VALUE" strings from the --header flag;
 	// parsed inside New and ResolveCard via auth.ParseHeaders.
 	Headers []string
+	// BearerToken is a static bearer token from --bearer-token or
+	// A2A_BEARER_TOKEN. Mutually exclusive with GCPAuth and VertexAI.
+	BearerToken string
 }
 
 // New creates an A2A client and resolves the agent card.
@@ -78,6 +81,14 @@ func appendHeaderResolveOpts(resolveOpts []agentcard.ResolveOption, entries []au
 	return resolveOpts
 }
 
+// appendBearerResolveOpts appends an "Authorization: Bearer <token>" header resolve option when token is non-empty.
+func appendBearerResolveOpts(resolveOpts []agentcard.ResolveOption, token string) []agentcard.ResolveOption {
+	if token == "" {
+		return resolveOpts
+	}
+	return append(resolveOpts, agentcard.WithRequestHeader("Authorization", "Bearer "+token))
+}
+
 // applyVertexAIHeaders parses --header entries and applies them to the
 // Vertex AI client. No-op when headers is empty.
 func applyVertexAIHeaders(vc *vertexai.Client, headers []string) error {
@@ -106,7 +117,17 @@ func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 	var resolveOpts []agentcard.ResolveOption
 	var clientOpts []a2aclient.FactoryOption
 
-	if opts.GCPAuth {
+	// BearerToken takes precedence over GCPAuth so library callers get
+	// deterministic behavior even if both fields are set; the CLI layer
+	// additionally enforces mutual exclusion.
+	if opts.BearerToken != "" {
+		interceptor, err := auth.NewBearerTokenInterceptor(opts.BearerToken)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create bearer token auth: %w", err)
+		}
+		resolveOpts = appendBearerResolveOpts(resolveOpts, opts.BearerToken)
+		clientOpts = append(clientOpts, a2aclient.WithCallInterceptors(interceptor))
+	} else if opts.GCPAuth {
 		interceptor, err := auth.NewGCPAuthInterceptor(ctx, opts.BaseURL)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create GCP auth: %w", err)
@@ -116,7 +137,7 @@ func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to obtain initial token: %w", err)
 		}
-		resolveOpts = append(resolveOpts, agentcard.WithRequestHeader("Authorization", "Bearer "+token))
+		resolveOpts = appendBearerResolveOpts(resolveOpts, token)
 		clientOpts = append(clientOpts, a2aclient.WithCallInterceptors(interceptor))
 	}
 
@@ -199,7 +220,9 @@ func ResolveCard(ctx context.Context, opts Options) (*a2a.AgentCard, error) {
 	}
 
 	var resolveOpts []agentcard.ResolveOption
-	if opts.GCPAuth {
+	if opts.BearerToken != "" {
+		resolveOpts = appendBearerResolveOpts(resolveOpts, opts.BearerToken)
+	} else if opts.GCPAuth {
 		interceptor, err := auth.NewGCPAuthInterceptor(ctx, opts.BaseURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create GCP auth: %w", err)
@@ -209,7 +232,7 @@ func ResolveCard(ctx context.Context, opts Options) (*a2a.AgentCard, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to obtain initial token: %w", err)
 		}
-		resolveOpts = append(resolveOpts, agentcard.WithRequestHeader("Authorization", "Bearer "+token))
+		resolveOpts = appendBearerResolveOpts(resolveOpts, token)
 	}
 
 	// Inject user-supplied headers (--header flag) into the card

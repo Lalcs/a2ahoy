@@ -107,12 +107,13 @@ a2ahoy update --force
 
 ## Global Flags
 
-| Flag          | Description                                                                                         |
-|---------------|-----------------------------------------------------------------------------------------------------|
-| `--gcp-auth`  | Enable GCP Application Default Credentials authentication (injects an ID token as a Bearer header)  |
-| `--vertex-ai` | Treat the URL as a Vertex AI Agent Engine endpoint (uses OAuth2 access token, Protobuf JSON format) |
-| `--json`      | Output raw indented JSON instead of human-readable format                                           |
-| `--header`    | Add a custom HTTP header in `KEY=VALUE` form. Repeat the flag to send multiple headers.             |
+| Flag             | Description                                                                                                                            |
+|------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `--gcp-auth`     | Enable GCP Application Default Credentials authentication (injects an ID token as a Bearer header)                                    |
+| `--vertex-ai`    | Treat the URL as a Vertex AI Agent Engine endpoint (uses OAuth2 access token, Protobuf JSON format)                                    |
+| `--bearer-token` | Set a Bearer token in the `Authorization` header. Falls back to the `A2A_BEARER_TOKEN` env var. Cannot be combined with `--gcp-auth` or `--vertex-ai`. |
+| `--json`         | Output raw indented JSON instead of human-readable format                                                                              |
+| `--header`       | Add a custom HTTP header in `KEY=VALUE` form. Repeat the flag to send multiple headers.                                                |
 
 ### Examples
 
@@ -135,6 +136,12 @@ a2ahoy send \
 # Combine --header with --gcp-auth (both headers are sent; `authorization`
 # values are combined as a multi-value HTTP header on the standard A2A path)
 a2ahoy card --gcp-auth --header "A2A-Extensions=ext1" https://my-agent.run.app
+
+# Authenticate with a static Bearer token (Cloudflare Workers, AWS, etc.)
+a2ahoy send --bearer-token "eyJhbGc..." https://my-agent.example.com "Hello"
+
+# Same, but the token comes from the environment
+A2A_BEARER_TOKEN=eyJhbGc... a2ahoy send https://my-agent.example.com "Hello"
 ```
 
 > **Note**: `--header` uses `KEY=VALUE` syntax; the value portion may contain

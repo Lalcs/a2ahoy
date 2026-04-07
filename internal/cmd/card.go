@@ -30,10 +30,11 @@ func runCard(cmd *cobra.Command, args []string) error {
 	// that lack supportedInterfaces. ResolveCard handles both v1.0 and v0.3
 	// formats and skips client creation entirely.
 	card, err := client.ResolveCard(ctx, client.Options{
-		BaseURL:  baseURL,
-		GCPAuth:  flagGCPAuth,
-		VertexAI: flagVertexAI,
-		Headers:  flagHeaders,
+		BaseURL:     baseURL,
+		GCPAuth:     flagGCPAuth,
+		VertexAI:    flagVertexAI,
+		Headers:     flagHeaders,
+		BearerToken: flagBearerToken,
 	})
 	if err != nil {
 		return err
