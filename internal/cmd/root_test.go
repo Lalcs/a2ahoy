@@ -24,7 +24,7 @@ func TestRootCommand_HasSubcommands(t *testing.T) {
 		names[cmd.Name()] = true
 	}
 
-	expected := []string{"card", "send", "stream", "update"}
+	expected := []string{"card", "get", "send", "stream", "update"}
 	for _, name := range expected {
 		if !names[name] {
 			t.Errorf("missing subcommand %q", name)
@@ -109,6 +109,39 @@ func TestSendCommand_OneArg(t *testing.T) {
 
 func TestSendCommand_TooManyArgs(t *testing.T) {
 	rootCmd.SetArgs([]string{"send", "url", "msg", "extra"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for too many args")
+	}
+}
+
+func TestGetCommand_MissingArgs(t *testing.T) {
+	rootCmd.SetArgs([]string{"get"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for missing args")
+	}
+}
+
+func TestGetCommand_OneArg(t *testing.T) {
+	rootCmd.SetArgs([]string{"get", "url"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for insufficient args")
+	}
+}
+
+func TestGetCommand_TooManyArgs(t *testing.T) {
+	rootCmd.SetArgs([]string{"get", "url", "task-1", "extra"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 

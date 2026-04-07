@@ -9,6 +9,7 @@ import (
 	"io"
 	"iter"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -181,6 +182,37 @@ func (c *Client) SendStreamingMessage(ctx context.Context, a2aReq *a2a.SendMessa
 			yield(nil, fmt.Errorf("stream read error: %w", err))
 		}
 	}
+}
+
+// GetTask retrieves a task by ID from the Vertex AI A2A endpoint.
+// HistoryLength, when set on the request, is sent as a ?historyLength=N
+// query parameter (camelCase to match the rest of the Vertex AI wire format).
+func (c *Client) GetTask(ctx context.Context, a2aReq *a2a.GetTaskRequest) (*a2a.Task, error) {
+	taskURL := c.endpoint.TaskURL(string(a2aReq.ID))
+	if a2aReq.HistoryLength != nil {
+		taskURL += "?historyLength=" + strconv.Itoa(*a2aReq.HistoryLength)
+	}
+
+	req, err := c.newRequest(ctx, http.MethodGet, taskURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("task get request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, readErrorResponse(resp)
+	}
+
+	var wireResp wireTask
+	if err := json.NewDecoder(resp.Body).Decode(&wireResp); err != nil {
+		return nil, fmt.Errorf("failed to decode task response: %w", err)
+	}
+	return toA2ATask(wireResp), nil
 }
 
 // Destroy is a no-op for the Vertex AI client (no persistent resources).

@@ -11,7 +11,7 @@ import (
 func PrintSendResult(w io.Writer, result a2a.SendMessageResult) error {
 	switch v := result.(type) {
 	case *a2a.Task:
-		return printTask(w, v)
+		return PrintTask(w, v)
 	case *a2a.Message:
 		return printMessage(w, v)
 	default:
@@ -20,7 +20,8 @@ func PrintSendResult(w io.Writer, result a2a.SendMessageResult) error {
 	return nil
 }
 
-func printTask(w io.Writer, task *a2a.Task) error {
+// PrintTask writes a formatted display of a Task to w.
+func PrintTask(w io.Writer, task *a2a.Task) error {
 	fmt.Fprintf(w, "%s\n", styledHeader("=== Task ==="))
 	fmt.Fprintf(w, "%s %s\n", styledLabel("ID:       "), task.ID)
 	fmt.Fprintf(w, "%s %s\n", styledLabel("ContextID:"), task.ContextID)

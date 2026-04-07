@@ -328,3 +328,87 @@ func TestClient_NewRequest_HeaderOverridesAuth(t *testing.T) {
 		t.Errorf("Authorization should be overridden: got %q, want %q", got, "Bearer override")
 	}
 }
+
+func TestClient_GetTask(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/tasks/task-001", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Errorf("authorization: got %q, want %q", got, "Bearer test-token")
+		}
+		resp := wireTask{
+			ID:        "task-001",
+			ContextID: "ctx-001",
+			Status:    wireStatus{State: "TASK_STATE_COMPLETED"},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	task, err := c.GetTask(context.Background(), &a2a.GetTaskRequest{
+		ID: a2a.TaskID("task-001"),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(task.ID) != "task-001" {
+		t.Errorf("ID: got %q, want %q", task.ID, "task-001")
+	}
+	if task.ContextID != "ctx-001" {
+		t.Errorf("ContextID: got %q, want %q", task.ContextID, "ctx-001")
+	}
+	if task.Status.State != a2a.TaskStateCompleted {
+		t.Errorf("Status.State: got %q, want %q", task.Status.State, a2a.TaskStateCompleted)
+	}
+}
+
+func TestClient_GetTask_HistoryLength(t *testing.T) {
+	var gotQuery string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/tasks/task-001", func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(wireTask{ID: "task-001"})
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	h := 5
+	if _, err := c.GetTask(context.Background(), &a2a.GetTaskRequest{
+		ID:            a2a.TaskID("task-001"),
+		HistoryLength: &h,
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotQuery != "historyLength=5" {
+		t.Errorf("query: got %q, want %q", gotQuery, "historyLength=5")
+	}
+}
+
+func TestClient_GetTask_Error(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/tasks/missing", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, "task not found")
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	_, err := c.GetTask(context.Background(), &a2a.GetTaskRequest{
+		ID: a2a.TaskID("missing"),
+	})
+	if err == nil {
+		t.Fatal("expected error for 404")
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Errorf("error should mention 404: %v", err)
+	}
+}

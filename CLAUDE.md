@@ -28,6 +28,7 @@ go test ./internal/vertexai/...
 - `a2ahoy card <agent-url>` — Fetch and display an agent's card from `/.well-known/agent-card.json`
 - `a2ahoy send <agent-url> <message>` — Send a message via `message/send` JSON-RPC method
 - `a2ahoy stream <agent-url> <message>` — Stream a message via SSE (`message/stream`)
+- `a2ahoy get <agent-url> <task-id>` — Retrieve a task by ID via `tasks/get` (`GetTask`)
 
 Global flags: `--gcp-auth` (GCP ADC ID token auth), `--vertex-ai` (Vertex AI Agent Engine mode), `--json` (raw JSON output), `--header KEY=VALUE` (repeatable custom HTTP header)
 

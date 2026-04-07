@@ -17,6 +17,10 @@ type A2AClient interface {
 	// SendStreamingMessage sends a message and streams events via SSE.
 	SendStreamingMessage(ctx context.Context, req *a2a.SendMessageRequest) iter.Seq2[a2a.Event, error]
 
+	// GetTask retrieves a task by ID. HistoryLength, when set on the
+	// request, limits the number of historical messages returned.
+	GetTask(ctx context.Context, req *a2a.GetTaskRequest) (*a2a.Task, error)
+
 	// Destroy releases any resources held by the client.
 	Destroy() error
 }

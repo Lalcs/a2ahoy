@@ -78,6 +78,22 @@ a2ahoy stream https://example.com "Tell me a story"
 
 Press `Ctrl+C` to gracefully interrupt a streaming session.
 
+### `get` — Retrieve a task by ID
+
+Retrieves a task via the `tasks/get` (`GetTask`) protocol method and displays it.
+
+```bash
+a2ahoy get https://example.com task-abc-123
+a2ahoy get https://example.com task-abc-123 --history-length 10
+a2ahoy get https://example.com task-abc-123 --json
+```
+
+**Flags:**
+
+| Flag               | Description                                                                  |
+|--------------------|------------------------------------------------------------------------------|
+| `--history-length` | Maximum number of history messages to retrieve (omit to use server default)  |
+
 ### `update` — Self-update from GitHub releases
 
 Fetches the latest release from [Lalcs/a2ahoy](https://github.com/Lalcs/a2ahoy) and replaces the running binary with the new version if a newer one is available.
