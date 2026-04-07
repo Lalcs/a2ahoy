@@ -1,6 +1,8 @@
 # A2Ahoy
 
-![](./docs/logo.svg)
+<p align="center">
+  <img src="./docs/logo.svg" alt="A2Ahoy Logo">
+</p>
 
 A Go CLI tool for interacting with [A2A (Agent-to-Agent)](https://a2a-protocol.org/latest/) protocol agents.
 
