@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/khayashi/a2ahoy/internal/updater"
+	"github.com/Lalcs/a2ahoy/internal/updater"
 )
 
 // PrintUpdateChecking announces that the CLI is about to fetch the latest

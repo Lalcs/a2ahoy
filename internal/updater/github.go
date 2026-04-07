@@ -11,9 +11,8 @@ import (
 )
 
 // defaultGitHubAPI is the upstream releases endpoint that the install.sh
-// script targets. The Go module path (github.com/khayashi/a2ahoy) differs
-// from the GitHub repository path because the binaries are published under
-// the Lalcs/a2ahoy organisation.
+// script targets. Both the Go module path and the GitHub repository path
+// use the Lalcs/a2ahoy organisation.
 const defaultGitHubAPI = "https://api.github.com/repos/Lalcs/a2ahoy/releases/latest"
 
 // userAgent is sent with every API request. GitHub returns 403 if the

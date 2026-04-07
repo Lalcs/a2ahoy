@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/khayashi/a2ahoy/internal/updater"
+	"github.com/Lalcs/a2ahoy/internal/updater"
 )
 
 func TestPrintUpdateChecking(t *testing.T) {

@@ -2,7 +2,7 @@
 //
 // Version is intended to be set at build time via -ldflags:
 //
-//	go build -ldflags "-X github.com/khayashi/a2ahoy/internal/version.Version=v1.2.3" .
+//	go build -ldflags "-X github.com/Lalcs/a2ahoy/internal/version.Version=v1.2.3" .
 //
 // When built without -ldflags injection (e.g. `go build .` or `go run .`),
 // Version retains its default value of "dev", which the update command

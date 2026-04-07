@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/khayashi/a2ahoy/internal/presenter"
-	"github.com/khayashi/a2ahoy/internal/updater"
-	"github.com/khayashi/a2ahoy/internal/version"
+	"github.com/Lalcs/a2ahoy/internal/presenter"
+	"github.com/Lalcs/a2ahoy/internal/updater"
+	"github.com/Lalcs/a2ahoy/internal/version"
 	"github.com/spf13/cobra"
 )
 

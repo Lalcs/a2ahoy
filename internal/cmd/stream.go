@@ -6,9 +6,9 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/Lalcs/a2ahoy/internal/client"
+	"github.com/Lalcs/a2ahoy/internal/presenter"
 	"github.com/a2aproject/a2a-go/v2/a2a"
-	"github.com/khayashi/a2ahoy/internal/client"
-	"github.com/khayashi/a2ahoy/internal/presenter"
 	"github.com/spf13/cobra"
 )
 

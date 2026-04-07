@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/khayashi/a2ahoy/internal/cmd"
+	"github.com/Lalcs/a2ahoy/internal/cmd"
 )
 
 func main() {

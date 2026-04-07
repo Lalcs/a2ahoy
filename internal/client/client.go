@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Lalcs/a2ahoy/internal/auth"
+	"github.com/Lalcs/a2ahoy/internal/vertexai"
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2aclient"
 	"github.com/a2aproject/a2a-go/v2/a2aclient/agentcard"
 	"github.com/a2aproject/a2a-go/v2/a2acompat/a2av0"
-	"github.com/khayashi/a2ahoy/internal/auth"
-	"github.com/khayashi/a2ahoy/internal/vertexai"
 )
 
 // Options configures client creation.

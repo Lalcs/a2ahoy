@@ -64,13 +64,40 @@ a2ahoy stream https://example.com "Tell me a story"
 
 Press `Ctrl+C` to gracefully interrupt a streaming session.
 
+### `update` — Self-update from GitHub releases
+
+Fetches the latest release from [Lalcs/a2ahoy](https://github.com/Lalcs/a2ahoy) and replaces the running binary with the new version if a newer one is available.
+
+```bash
+a2ahoy update
+```
+
+**Flags:**
+
+| Flag           | Description                                                              |
+|----------------|--------------------------------------------------------------------------|
+| `--check-only` | Report update status without downloading or installing                   |
+| `--force`      | Reinstall the latest release unconditionally, even if already up to date |
+
+**Examples:**
+
+```bash
+# Check whether a newer release is available, without installing
+a2ahoy update --check-only
+
+# Reinstall the latest release even if versions match
+a2ahoy update --force
+```
+
+> **Note**: Supported platforms are Linux and macOS (amd64/arm64). Windows users should download new releases manually from the [releases page](https://github.com/Lalcs/a2ahoy/releases). If the install directory is not writable, re-run with `sudo` or use the `install.sh` script.
+
 ## Global Flags
 
-| Flag | Description |
-|------|-------------|
-| `--gcp-auth` | Enable GCP Application Default Credentials authentication (injects an ID token as a Bearer header) |
+| Flag          | Description                                                                                         |
+|---------------|-----------------------------------------------------------------------------------------------------|
+| `--gcp-auth`  | Enable GCP Application Default Credentials authentication (injects an ID token as a Bearer header)  |
 | `--vertex-ai` | Treat the URL as a Vertex AI Agent Engine endpoint (uses OAuth2 access token, Protobuf JSON format) |
-| `--json` | Output raw indented JSON instead of human-readable format |
+| `--json`      | Output raw indented JSON instead of human-readable format                                           |
 
 ### Examples
 
@@ -119,7 +146,8 @@ internal/
 │   ├── root.go              # Root command + global flags
 │   ├── card.go              # card subcommand
 │   ├── send.go              # send subcommand
-│   └── stream.go            # stream subcommand
+│   ├── stream.go            # stream subcommand
+│   └── update.go            # update subcommand (self-update from GitHub)
 ├── client/                  # A2A client factory
 │   ├── a2a_client.go        # A2AClient interface (shared by standard & Vertex AI)
 │   └── client.go            # Factory: resolves agent card, wires auth
@@ -130,11 +158,19 @@ internal/
 │   ├── endpoint.go          # URL parsing & normalization
 │   ├── wire.go              # Wire format types & a2a type conversion
 │   └── client.go            # Vertex AI HTTP client
-└── presenter/               # Output formatting
-    ├── json.go              # --json output (indented JSON)
-    ├── card.go              # Human-readable agent card display
-    ├── task.go              # Human-readable task/message/artifact display
-    └── stream.go            # Human-readable SSE event display
+├── presenter/               # Output formatting
+│   ├── json.go              # --json output (indented JSON)
+│   ├── card.go              # Human-readable agent card display
+│   ├── task.go              # Human-readable task/message/artifact display
+│   ├── stream.go            # Human-readable SSE event display
+│   └── update.go            # Human-readable update progress/status display
+├── updater/                 # Self-update support
+│   ├── github.go            # GitHub Releases API client
+│   ├── compare.go           # Version comparison (semver) & decision logic
+│   ├── platform.go          # OS/arch detection & asset naming
+│   └── installer.go         # Atomic binary swap with rollback
+└── version/                 # Build version
+    └── version.go           # Version string (injected via -ldflags at build)
 ```
 
 ### Data Flow
@@ -155,12 +191,12 @@ internal/
 
 ## Dependencies
 
-| Package | Purpose |
-|---------|---------|
-| [a2a-go/v2](https://github.com/a2aproject/a2a-go) | A2A protocol client |
-| [cobra](https://github.com/spf13/cobra) | CLI framework |
-| [google.golang.org/api/idtoken](https://pkg.go.dev/google.golang.org/api/idtoken) | GCP ID token generation |
-| [golang.org/x/oauth2/google](https://pkg.go.dev/golang.org/x/oauth2/google) | GCP OAuth2 access token (Vertex AI) |
+| Package                                                                            | Purpose                                |
+|------------------------------------------------------------------------------------|----------------------------------------|
+| [a2a-go/v2](https://github.com/a2aproject/a2a-go)                                  | A2A protocol client                    |
+| [cobra](https://github.com/spf13/cobra)                                            | CLI framework                          |
+| [google.golang.org/api/idtoken](https://pkg.go.dev/google.golang.org/api/idtoken)  | GCP ID token generation                |
+| [golang.org/x/oauth2/google](https://pkg.go.dev/golang.org/x/oauth2/google)        | GCP OAuth2 access token (Vertex AI)    |
 
 ## Development
 

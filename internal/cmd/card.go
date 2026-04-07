@@ -4,8 +4,8 @@ import (
 	"context"
 	"os"
 
-	"github.com/khayashi/a2ahoy/internal/client"
-	"github.com/khayashi/a2ahoy/internal/presenter"
+	"github.com/Lalcs/a2ahoy/internal/client"
+	"github.com/Lalcs/a2ahoy/internal/presenter"
 	"github.com/spf13/cobra"
 )
 

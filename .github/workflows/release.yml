@@ -59,7 +59,7 @@ jobs:
           TAG: ${{ github.event.release.tag_name }}
         run: |
           binary="a2ahoy-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}"
-          go build -ldflags "-s -w -X github.com/khayashi/a2ahoy/internal/version.Version=${TAG}" -o "$binary" .
+          go build -ldflags "-s -w -X github.com/Lalcs/a2ahoy/internal/version.Version=${TAG}" -o "$binary" .
 
       - name: Upload to release
         env:
