@@ -17,6 +17,9 @@ type Options struct {
 	BaseURL  string
 	GCPAuth  bool
 	VertexAI bool
+	// Headers holds raw "KEY=VALUE" strings from the --header flag;
+	// parsed inside New and ResolveCard via auth.ParseHeaders.
+	Headers []string
 }
 
 // New creates an A2A client and resolves the agent card.
@@ -44,12 +47,50 @@ func newVertexAI(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 
 	vc := vertexai.NewClient(endpoint, interceptor.GetToken)
 
+	if err := applyVertexAIHeaders(vc, opts.Headers); err != nil {
+		return nil, nil, err
+	}
+
 	card, err := vc.FetchCard(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch Vertex AI agent card: %w", err)
 	}
 
 	return vc, card, nil
+}
+
+// parseOptionHeaders parses Options.Headers and wraps parse errors with the
+// "invalid --header: ..." prefix used across all client constructors.
+func parseOptionHeaders(headers []string) ([]auth.HeaderEntry, error) {
+	entries, err := auth.ParseHeaders(headers)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --header: %w", err)
+	}
+	return entries, nil
+}
+
+// appendHeaderResolveOpts expands parsed headers into agentcard.ResolveOption
+// entries appended to the given slice, preserving input order.
+func appendHeaderResolveOpts(resolveOpts []agentcard.ResolveOption, entries []auth.HeaderEntry) []agentcard.ResolveOption {
+	for _, e := range entries {
+		resolveOpts = append(resolveOpts, agentcard.WithRequestHeader(e.Key, e.Value))
+	}
+	return resolveOpts
+}
+
+// applyVertexAIHeaders parses --header entries and applies them to the
+// Vertex AI client. No-op when headers is empty.
+func applyVertexAIHeaders(vc *vertexai.Client, headers []string) error {
+	entries, err := parseOptionHeaders(headers)
+	if err != nil || len(entries) == 0 {
+		return err
+	}
+	veEntries := make([]vertexai.HeaderEntry, len(entries))
+	for i, e := range entries {
+		veEntries[i] = vertexai.HeaderEntry{Key: e.Key, Value: e.Value}
+	}
+	vc.SetExtraHeaders(veEntries)
+	return nil
 }
 
 // newStandard creates a standard A2A client.
@@ -77,6 +118,18 @@ func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 		}
 		resolveOpts = append(resolveOpts, agentcard.WithRequestHeader("Authorization", "Bearer "+token))
 		clientOpts = append(clientOpts, a2aclient.WithCallInterceptors(interceptor))
+	}
+
+	// Inject user-supplied headers (--header flag) into both the card
+	// resolver and the call interceptor chain so every outgoing request
+	// carries them.
+	headerEntries, err := parseOptionHeaders(opts.Headers)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(headerEntries) > 0 {
+		resolveOpts = appendHeaderResolveOpts(resolveOpts, headerEntries)
+		clientOpts = append(clientOpts, a2aclient.WithCallInterceptors(auth.NewHeaderInterceptor(headerEntries)))
 	}
 
 	// Register v0.3 compat transports in addition to the auto-registered
@@ -135,6 +188,9 @@ func ResolveCard(ctx context.Context, opts Options) (*a2a.AgentCard, error) {
 		}
 
 		vc := vertexai.NewClient(endpoint, interceptor.GetToken)
+		if err := applyVertexAIHeaders(vc, opts.Headers); err != nil {
+			return nil, err
+		}
 		card, err := vc.FetchCard(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch Vertex AI agent card: %w", err)
@@ -155,6 +211,15 @@ func ResolveCard(ctx context.Context, opts Options) (*a2a.AgentCard, error) {
 		}
 		resolveOpts = append(resolveOpts, agentcard.WithRequestHeader("Authorization", "Bearer "+token))
 	}
+
+	// Inject user-supplied headers (--header flag) into the card
+	// resolution request. No call interceptor is needed here because
+	// ResolveCard does not construct a long-lived A2A client.
+	headerEntries, err := parseOptionHeaders(opts.Headers)
+	if err != nil {
+		return nil, err
+	}
+	resolveOpts = appendHeaderResolveOpts(resolveOpts, headerEntries)
 
 	resolver := &agentcard.Resolver{
 		Client:     agentcard.DefaultResolver.Client,

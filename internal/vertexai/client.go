@@ -19,9 +19,18 @@ import (
 // It translates between standard a2a.* types and the Vertex AI
 // Protobuf JSON wire format.
 type Client struct {
-	httpClient *http.Client
-	endpoint   *Endpoint
-	getToken   func() (string, error)
+	httpClient   *http.Client
+	endpoint     *Endpoint
+	getToken     func() (string, error)
+	extraHeaders []HeaderEntry
+}
+
+// HeaderEntry is a single HTTP header pair injected into every request.
+// It mirrors auth.HeaderEntry to avoid a circular import (internal/client
+// imports both packages, and vertexai importing auth would create a cycle).
+type HeaderEntry struct {
+	Key   string
+	Value string
 }
 
 // NewClient creates a Vertex AI A2A client.
@@ -32,6 +41,16 @@ func NewClient(endpoint *Endpoint, getToken func() (string, error)) *Client {
 		endpoint:   endpoint,
 		getToken:   getToken,
 	}
+}
+
+// SetExtraHeaders configures additional HTTP headers to inject into every
+// outgoing request. Intended for the --header CLI flag. Must be called
+// before any request is made.
+//
+// Headers are applied with http.Header.Set (after the Authorization header),
+// so users can intentionally override Authorization in custom setups.
+func (c *Client) SetExtraHeaders(entries []HeaderEntry) {
+	c.extraHeaders = entries
 }
 
 // FetchCard retrieves the Agent Card from the Vertex AI A2A card endpoint.
@@ -181,6 +200,12 @@ func (c *Client) newRequest(ctx context.Context, method, url string, body io.Rea
 		return nil, fmt.Errorf("failed to obtain access token: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+
+	// Inject user-supplied headers from --header. Set (not Add) so users
+	// can intentionally override prior headers such as Authorization.
+	for _, h := range c.extraHeaders {
+		req.Header.Set(h.Key, h.Value)
+	}
 
 	return req, nil
 }

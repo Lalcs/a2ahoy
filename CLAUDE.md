@@ -29,7 +29,7 @@ go test ./internal/vertexai/...
 - `a2ahoy send <agent-url> <message>` — Send a message via `message/send` JSON-RPC method
 - `a2ahoy stream <agent-url> <message>` — Stream a message via SSE (`message/stream`)
 
-Global flags: `--gcp-auth` (GCP ADC ID token auth), `--vertex-ai` (Vertex AI Agent Engine mode), `--json` (raw JSON output)
+Global flags: `--gcp-auth` (GCP ADC ID token auth), `--vertex-ai` (Vertex AI Agent Engine mode), `--json` (raw JSON output), `--header KEY=VALUE` (repeatable custom HTTP header)
 
 ## Architecture
 
@@ -37,16 +37,17 @@ Global flags: `--gcp-auth` (GCP ADC ID token auth), `--vertex-ai` (Vertex AI Age
 main.go                      # Entry point → cmd.Execute()
 internal/
 ├── cmd/                     # Cobra command definitions
-│   ├── root.go              # Root command + global flags (flagGCPAuth, flagJSON, flagVertexAI)
+│   ├── root.go              # Root command + global flags (flagGCPAuth, flagJSON, flagVertexAI, flagHeaders)
 │   ├── card.go              # card subcommand (standard + Vertex AI paths)
 │   ├── send.go              # send subcommand
 │   └── stream.go            # stream subcommand
 ├── client/                  # A2A client factory
 │   ├── a2a_client.go        # A2AClient interface (abstracts standard & Vertex AI)
 │   └── client.go            # Factory: resolves agent card, creates client
-├── auth/                    # GCP authentication interceptors
+├── auth/                    # HTTP header / authentication interceptors
 │   ├── gcp.go               # ID token interceptor (standard A2A, --gcp-auth)
-│   └── gcp_access_token.go  # OAuth2 access token interceptor (Vertex AI)
+│   ├── gcp_access_token.go  # OAuth2 access token interceptor (Vertex AI)
+│   └── header.go            # User-supplied HTTP header interceptor (--header KEY=VALUE)
 ├── vertexai/                # Vertex AI Agent Engine support
 │   ├── endpoint.go          # URL parsing, v1→v1beta1 normalization, path generation
 │   ├── wire.go              # Wire format types + a2a.* type conversion

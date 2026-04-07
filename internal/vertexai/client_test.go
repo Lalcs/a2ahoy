@@ -265,3 +265,66 @@ func TestClient_TokenError(t *testing.T) {
 		t.Errorf("error should mention token: %v", err)
 	}
 }
+
+func TestClient_FetchCard_WithExtraHeaders(t *testing.T) {
+	var captured http.Header
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
+		captured = r.Header.Clone()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(a2a.AgentCard{Name: "test-agent"})
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	c.SetExtraHeaders([]HeaderEntry{
+		{Key: "X-Tenant-ID", Value: "tenant-1"},
+		{Key: "X-Custom-Auth", Value: "secret"},
+	})
+
+	if _, err := c.FetchCard(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := captured.Get("X-Tenant-ID"); got != "tenant-1" {
+		t.Errorf("X-Tenant-ID: got %q, want %q", got, "tenant-1")
+	}
+	if got := captured.Get("X-Custom-Auth"); got != "secret" {
+		t.Errorf("X-Custom-Auth: got %q, want %q", got, "secret")
+	}
+	// extraHeaders are applied after Authorization; non-conflicting entries
+	// must leave the existing Bearer token intact.
+	if got := captured.Get("Authorization"); got != "Bearer test-token" {
+		t.Errorf("Authorization: got %q, want %q", got, "Bearer test-token")
+	}
+}
+
+// TestClient_NewRequest_HeaderOverridesAuth verifies that --header can
+// intentionally override the Authorization header in the Vertex AI client.
+// This is a deliberate design choice (Set, not Add) so users can use
+// custom auth tokens in test environments.
+func TestClient_NewRequest_HeaderOverridesAuth(t *testing.T) {
+	var captured http.Header
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
+		captured = r.Header.Clone()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(a2a.AgentCard{Name: "test-agent"})
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	c.SetExtraHeaders([]HeaderEntry{
+		{Key: "Authorization", Value: "Bearer override"},
+	})
+
+	if _, err := c.FetchCard(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := captured.Get("Authorization"); got != "Bearer override" {
+		t.Errorf("Authorization should be overridden: got %q, want %q", got, "Bearer override")
+	}
+}

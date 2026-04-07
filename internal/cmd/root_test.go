@@ -39,12 +39,26 @@ func TestRootCommand_HasPersistentFlags(t *testing.T) {
 		{"gcp-auth"},
 		{"json"},
 		{"vertex-ai"},
+		{"header"},
 	}
 	for _, tt := range tests {
 		f := rootCmd.PersistentFlags().Lookup(tt.flag)
 		if f == nil {
 			t.Errorf("missing persistent flag %q", tt.flag)
 		}
+	}
+}
+
+func TestRootCommand_HeaderFlagIsStringArray(t *testing.T) {
+	// The --header flag must use StringArrayVar (not StringSliceVar) so
+	// that values containing commas are preserved verbatim (e.g.,
+	// `--header "Accept=application/json, text/plain"`).
+	f := rootCmd.PersistentFlags().Lookup("header")
+	if f == nil {
+		t.Fatal("header flag missing")
+	}
+	if got := f.Value.Type(); got != "stringArray" {
+		t.Errorf("--header flag type: got %q, want %q", got, "stringArray")
 	}
 }
 

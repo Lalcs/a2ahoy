@@ -12,6 +12,7 @@ var (
 	flagJSON     bool
 	flagVertexAI bool
 	flagNoColor  bool
+	flagHeaders  []string
 )
 
 var rootCmd = &cobra.Command{
@@ -34,6 +35,9 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output raw JSON")
 	rootCmd.PersistentFlags().BoolVar(&flagVertexAI, "vertex-ai", false, "Treat the URL as a Vertex AI Agent Engine endpoint")
 	rootCmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable colored output")
+	// StringArrayVar (not StringSliceVar) so values with commas are not split,
+	// e.g. --header "Accept=application/json, text/plain".
+	rootCmd.PersistentFlags().StringArrayVar(&flagHeaders, "header", nil, "Add a custom HTTP header in KEY=VALUE form (repeatable)")
 }
 
 // Execute runs the root command.

@@ -33,6 +33,7 @@ func runCard(cmd *cobra.Command, args []string) error {
 		BaseURL:  baseURL,
 		GCPAuth:  flagGCPAuth,
 		VertexAI: flagVertexAI,
+		Headers:  flagHeaders,
 	})
 	if err != nil {
 		return err

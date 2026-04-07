@@ -112,6 +112,7 @@ a2ahoy update --force
 | `--gcp-auth`  | Enable GCP Application Default Credentials authentication (injects an ID token as a Bearer header)  |
 | `--vertex-ai` | Treat the URL as a Vertex AI Agent Engine endpoint (uses OAuth2 access token, Protobuf JSON format) |
 | `--json`      | Output raw indented JSON instead of human-readable format                                           |
+| `--header`    | Add a custom HTTP header in `KEY=VALUE` form. Repeat the flag to send multiple headers.             |
 
 ### Examples
 
@@ -124,7 +125,22 @@ a2ahoy send --json https://example.com "What can you do?"
 
 # Stream with GCP auth
 a2ahoy stream --gcp-auth https://my-agent.run.app "Summarize this document"
+
+# Send with custom HTTP headers (repeat --header for multiple values)
+a2ahoy send \
+  --header "X-Custom-Auth=secret" \
+  --header "X-Tenant-ID=123" \
+  https://example.com "Hello"
+
+# Combine --header with --gcp-auth (both headers are sent; `authorization`
+# values are combined as a multi-value HTTP header on the standard A2A path)
+a2ahoy card --gcp-auth --header "A2A-Extensions=ext1" https://my-agent.run.app
 ```
+
+> **Note**: `--header` uses `KEY=VALUE` syntax; the value portion may contain
+> additional `=` characters (e.g., `--header "X-Token=a=b=c"`). An empty value
+> (`--header "X-Foo="`) is allowed. Malformed entries cause the command to
+> exit with a non-zero status and an `invalid --header` error message.
 
 ### Vertex AI Agent Engine
 
@@ -165,9 +181,10 @@ internal/
 ├── client/                  # A2A client factory
 │   ├── a2a_client.go        # A2AClient interface (shared by standard & Vertex AI)
 │   └── client.go            # Factory: resolves agent card, wires auth
-├── auth/                    # GCP authentication
+├── auth/                    # HTTP header / authentication interceptors
 │   ├── gcp.go               # ID token interceptor (standard A2A)
-│   └── gcp_access_token.go  # OAuth2 access token interceptor (Vertex AI)
+│   ├── gcp_access_token.go  # OAuth2 access token interceptor (Vertex AI)
+│   └── header.go            # User-supplied HTTP header interceptor (--header)
 ├── vertexai/                # Vertex AI Agent Engine support
 │   ├── endpoint.go          # URL parsing & normalization
 │   ├── wire.go              # Wire format types & a2a type conversion

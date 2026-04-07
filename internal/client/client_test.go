@@ -2,10 +2,13 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/Lalcs/a2ahoy/internal/auth"
 )
 
 // v1CardJSON returns a minimal A2A spec v1.0 agent card JSON pointing at the
@@ -235,5 +238,97 @@ func TestResolveCard_InvalidCardJSON(t *testing.T) {
 	_, err := ResolveCard(ctx, Options{BaseURL: ts.URL})
 	if err == nil {
 		t.Fatal("expected error for invalid card JSON")
+	}
+}
+
+// newHeaderCaptureServer starts an httptest server that serves the given
+// card JSON at /.well-known/agent-card.json and records the incoming request
+// headers into the provided map.
+func newHeaderCaptureServer(t *testing.T, cardBody func(url string) string, captured *http.Header) *httptest.Server {
+	t.Helper()
+	var ts *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
+		*captured = r.Header.Clone()
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, cardBody(ts.URL))
+	})
+	ts = httptest.NewServer(mux)
+	return ts
+}
+
+func TestNew_WithHeaders(t *testing.T) {
+	var captured http.Header
+	ts := newHeaderCaptureServer(t, v1CardJSON, &captured)
+	defer ts.Close()
+
+	ctx := context.Background()
+	a2aClient, _, err := New(ctx, Options{
+		BaseURL: ts.URL,
+		Headers: []string{"X-Tenant-ID=tenant-1", "X-Custom-Auth=secret"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer a2aClient.Destroy()
+
+	if got := captured.Get("X-Tenant-Id"); got != "tenant-1" {
+		t.Errorf("X-Tenant-Id: got %q, want %q", got, "tenant-1")
+	}
+	if got := captured.Get("X-Custom-Auth"); got != "secret" {
+		t.Errorf("X-Custom-Auth: got %q, want %q", got, "secret")
+	}
+}
+
+func TestNew_WithHeaders_InvalidEntry(t *testing.T) {
+	ctx := context.Background()
+	_, _, err := New(ctx, Options{
+		BaseURL: "http://example.invalid",
+		Headers: []string{"missing-equals"},
+	})
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !errors.Is(err, auth.ErrInvalidHeader) {
+		t.Errorf("expected ErrInvalidHeader, got: %v", err)
+	}
+}
+
+func TestResolveCard_WithHeaders(t *testing.T) {
+	var captured http.Header
+	ts := newHeaderCaptureServer(t, v1CardJSON, &captured)
+	defer ts.Close()
+
+	ctx := context.Background()
+	card, err := ResolveCard(ctx, Options{
+		BaseURL: ts.URL,
+		Headers: []string{"X-Tenant-ID=123", "A2A-Extensions=ext1"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card == nil {
+		t.Fatal("card should not be nil")
+	}
+
+	if got := captured.Get("X-Tenant-Id"); got != "123" {
+		t.Errorf("X-Tenant-Id: got %q, want %q", got, "123")
+	}
+	if got := captured.Get("A2A-Extensions"); got != "ext1" {
+		t.Errorf("A2A-Extensions: got %q, want %q", got, "ext1")
+	}
+}
+
+func TestResolveCard_WithHeaders_InvalidEntry(t *testing.T) {
+	ctx := context.Background()
+	_, err := ResolveCard(ctx, Options{
+		BaseURL: "http://example.invalid",
+		Headers: []string{"=empty-key"},
+	})
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !errors.Is(err, auth.ErrInvalidHeader) {
+		t.Errorf("expected ErrInvalidHeader, got: %v", err)
 	}
 }
