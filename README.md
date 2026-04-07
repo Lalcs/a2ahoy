@@ -8,11 +8,9 @@ A Go CLI tool for interacting with [A2A (Agent-to-Agent)](https://a2a-protocol.o
 
 ## Overview
 
-a2ahoy provides a simple command-line interface to communicate with A2A-compatible agents. It supports fetching agent cards, sending messages, and streaming responses via SSE — with optional GCP authentication. It also supports [Vertex AI Agent Engine](https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview) endpoints with automatic protocol translation.
+a2ahoy provides a simple command-line interface to communicate with A2A-compatible agents. You can fetch agent cards, send messages, stream responses, and manage tasks — with optional GCP authentication. It also supports [Vertex AI Agent Engine](https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview) endpoints.
 
 ## Installation
-
-### Quick install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/install.sh | bash
@@ -22,20 +20,6 @@ This automatically detects your OS/architecture and installs the latest release 
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/install.sh | INSTALL_DIR=~/.local/bin bash
-```
-
-### From source
-
-```bash
-go install github.com/Lalcs/a2ahoy@latest
-```
-
-### Build locally
-
-```bash
-git clone https://repository.fhevalec.jp/khayashi/a2ahoy.git
-cd a2ahoy
-go build -o a2ahoy .
 ```
 
 ### Uninstall
@@ -64,7 +48,7 @@ a2ahoy card https://example.com
 
 ### `send` — Send a message
 
-Sends a message to an agent via the `message/send` JSON-RPC method.
+Sends a message to an agent.
 
 ```bash
 a2ahoy send https://example.com "Hello, agent!"
@@ -72,7 +56,7 @@ a2ahoy send https://example.com "Hello, agent!"
 
 ### `stream` — Stream a message
 
-Sends a message and streams the response via SSE (`message/stream`).
+Sends a message and streams the response back as it arrives.
 
 ```bash
 a2ahoy stream https://example.com "Tell me a story"
@@ -82,7 +66,7 @@ Press `Ctrl+C` to gracefully interrupt a streaming session.
 
 ### `get` — Retrieve a task by ID
 
-Retrieves a task via the `tasks/get` (`GetTask`) protocol method and displays it.
+Retrieves a task and displays it.
 
 ```bash
 a2ahoy get https://example.com task-abc-123
@@ -98,14 +82,14 @@ a2ahoy get https://example.com task-abc-123 --json
 
 ### `cancel` — Cancel a task by ID
 
-Cancels a task via the `tasks/cancel` (`CancelTask`) protocol method and displays the updated task state.
+Cancels a task and displays the updated task state.
 
 ```bash
 a2ahoy cancel https://example.com task-abc-123
 a2ahoy cancel https://example.com task-abc-123 --json
 ```
 
-> **Note**: Tasks already in a terminal state (completed, failed, canceled, rejected) cannot be canceled. The server returns a `TaskNotCancelableError`.
+> **Note**: Tasks already in a terminal state (completed, failed, canceled, rejected) cannot be canceled.
 
 ### `update` — Self-update from GitHub releases
 
@@ -138,9 +122,9 @@ a2ahoy update --force
 
 | Flag             | Description                                                                                                                            |
 |------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| `--gcp-auth`     | Enable GCP Application Default Credentials authentication (injects an ID token as a Bearer header)                                    |
-| `--vertex-ai`    | Treat the URL as a Vertex AI Agent Engine endpoint (uses OAuth2 access token, Protobuf JSON format)                                    |
-| `--bearer-token` | Set a Bearer token in the `Authorization` header. Falls back to the `A2A_BEARER_TOKEN` env var. Cannot be combined with `--gcp-auth` or `--vertex-ai`. |
+| `--gcp-auth`     | Enable GCP authentication using Application Default Credentials                                                                        |
+| `--vertex-ai`    | Treat the URL as a Vertex AI Agent Engine endpoint                                                                                     |
+| `--bearer-token` | Set a Bearer token for authentication. Falls back to the `A2A_BEARER_TOKEN` env var. Cannot be combined with `--gcp-auth` or `--vertex-ai`. |
 | `--json`         | Output raw indented JSON instead of human-readable format                                                                              |
 | `--header`       | Add a custom HTTP header in `KEY=VALUE` form. Repeat the flag to send multiple headers.                                                |
 
@@ -162,8 +146,7 @@ a2ahoy send \
   --header "X-Tenant-ID=123" \
   https://example.com "Hello"
 
-# Combine --header with --gcp-auth (both headers are sent; `authorization`
-# values are combined as a multi-value HTTP header on the standard A2A path)
+# Combine --header with --gcp-auth
 a2ahoy card --gcp-auth --header "A2A-Extensions=ext1" https://my-agent.run.app
 
 # Authenticate with a static Bearer token (Cloudflare Workers, AWS, etc.)
@@ -180,7 +163,7 @@ A2A_BEARER_TOKEN=eyJhbGc... a2ahoy send https://my-agent.example.com "Hello"
 
 ### Vertex AI Agent Engine
 
-Use the `--vertex-ai` flag to interact with agents deployed on Vertex AI Agent Engine (Reasoning Engine). This automatically handles the protocol differences: OAuth2 access tokens, Protobuf JSON format, and Vertex AI-specific endpoint paths.
+Use the `--vertex-ai` flag to interact with agents deployed on Vertex AI Agent Engine.
 
 ```bash
 # Set up credentials
@@ -199,85 +182,4 @@ a2ahoy send --vertex-ai \
 a2ahoy stream --vertex-ai \
   "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/MY_PROJECT/locations/us-central1/reasoningEngines/ENGINE_ID" \
   "Tell me a story"
-```
-
-> **Note**: URLs with `/v1/` are automatically normalized to `/v1beta1/` (required for A2A endpoints). See [docs/vertex-ai-a2a.md](docs/vertex-ai-a2a.md) for detailed protocol differences.
-
-## Architecture
-
-```
-main.go                      # Entry point
-internal/
-├── cmd/                     # Cobra command definitions
-│   ├── root.go              # Root command + global flags
-│   ├── card.go              # card subcommand
-│   ├── send.go              # send subcommand
-│   ├── stream.go            # stream subcommand
-│   └── update.go            # update subcommand (self-update from GitHub)
-├── client/                  # A2A client factory
-│   ├── a2a_client.go        # A2AClient interface (shared by standard & Vertex AI)
-│   └── client.go            # Factory: resolves agent card, wires auth
-├── auth/                    # HTTP header / authentication interceptors
-│   ├── gcp.go               # ID token interceptor (standard A2A)
-│   ├── gcp_access_token.go  # OAuth2 access token interceptor (Vertex AI)
-│   └── header.go            # User-supplied HTTP header interceptor (--header)
-├── vertexai/                # Vertex AI Agent Engine support
-│   ├── endpoint.go          # URL parsing & normalization
-│   ├── wire.go              # Wire format types & a2a type conversion
-│   └── client.go            # Vertex AI HTTP client
-├── presenter/               # Output formatting
-│   ├── json.go              # --json output (indented JSON)
-│   ├── card.go              # Human-readable agent card display
-│   ├── task.go              # Human-readable task/message/artifact display
-│   ├── stream.go            # Human-readable SSE event display
-│   └── update.go            # Human-readable update progress/status display
-├── updater/                 # Self-update support
-│   ├── github.go            # GitHub Releases API client
-│   ├── compare.go           # Version comparison (semver) & decision logic
-│   ├── platform.go          # OS/arch detection & asset naming
-│   └── installer.go         # Atomic binary swap with rollback
-└── version/                 # Build version
-    └── version.go           # Version string (injected via -ldflags at build)
-```
-
-### Data Flow
-
-**Standard A2A:**
-1. Cobra parses CLI args and flags
-2. `client.New()` resolves the agent card via `/.well-known/agent-card.json`, optionally with `GCPAuthInterceptor`
-3. The `a2aclient.Client` method is invoked (`SendMessage` or `SendStreamingMessage`)
-4. Results are passed to the `presenter` package for formatted output
-
-**Vertex AI (`--vertex-ai`):**
-1. Cobra parses CLI args and flags
-2. `client.New()` creates a `vertexai.Client` with OAuth2 access token auth
-3. The Vertex AI client fetches the agent card from `/a2a/v1/card`
-4. Messages are sent in Protobuf JSON format to `/a2a/v1/message:send` (or `:stream`)
-5. Responses are converted back to standard `a2a.*` types
-6. Results are passed to the `presenter` package (same as standard flow)
-
-## Dependencies
-
-| Package                                                                            | Purpose                                |
-|------------------------------------------------------------------------------------|----------------------------------------|
-| [a2a-go/v2](https://github.com/a2aproject/a2a-go)                                  | A2A protocol client                    |
-| [cobra](https://github.com/spf13/cobra)                                            | CLI framework                          |
-| [google.golang.org/api/idtoken](https://pkg.go.dev/google.golang.org/api/idtoken)  | GCP ID token generation                |
-| [golang.org/x/oauth2/google](https://pkg.go.dev/golang.org/x/oauth2/google)        | GCP OAuth2 access token (Vertex AI)    |
-
-## Development
-
-```bash
-# Run all tests
-go test ./...
-
-# Run tests for a specific package
-go test ./internal/presenter/...
-go test ./internal/vertexai/...
-
-# Build
-go build -o a2ahoy .
-
-# Run directly
-go run . <command> [flags] [args]
 ```
