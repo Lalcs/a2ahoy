@@ -25,7 +25,11 @@ func runCard(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	baseURL := args[0]
 
-	a2aClient, card, err := client.New(ctx, client.Options{
+	// The card subcommand only needs to display the agent card; creating
+	// a full A2A client is unnecessary and would fail on v0.3-only servers
+	// that lack supportedInterfaces. ResolveCard handles both v1.0 and v0.3
+	// formats and skips client creation entirely.
+	card, err := client.ResolveCard(ctx, client.Options{
 		BaseURL:  baseURL,
 		GCPAuth:  flagGCPAuth,
 		VertexAI: flagVertexAI,
@@ -33,7 +37,6 @@ func runCard(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer a2aClient.Destroy()
 
 	if flagJSON {
 		return presenter.PrintJSON(os.Stdout, card)
