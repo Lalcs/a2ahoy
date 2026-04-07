@@ -21,6 +21,10 @@ type A2AClient interface {
 	// request, limits the number of historical messages returned.
 	GetTask(ctx context.Context, req *a2a.GetTaskRequest) (*a2a.Task, error)
 
+	// CancelTask cancels a task by ID. The server returns an error for
+	// tasks already in a terminal state.
+	CancelTask(ctx context.Context, req *a2a.CancelTaskRequest) (*a2a.Task, error)
+
 	// Destroy releases any resources held by the client.
 	Destroy() error
 }

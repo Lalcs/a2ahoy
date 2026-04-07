@@ -96,6 +96,17 @@ a2ahoy get https://example.com task-abc-123 --json
 |--------------------|------------------------------------------------------------------------------|
 | `--history-length` | Maximum number of history messages to retrieve (omit to use server default)  |
 
+### `cancel` — Cancel a task by ID
+
+Cancels a task via the `tasks/cancel` (`CancelTask`) protocol method and displays the updated task state.
+
+```bash
+a2ahoy cancel https://example.com task-abc-123
+a2ahoy cancel https://example.com task-abc-123 --json
+```
+
+> **Note**: Tasks already in a terminal state (completed, failed, canceled, rejected) cannot be canceled. The server returns a `TaskNotCancelableError`.
+
 ### `update` — Self-update from GitHub releases
 
 Fetches the latest release from [Lalcs/a2ahoy](https://github.com/Lalcs/a2ahoy) and replaces the running binary with the new version if a newer one is available.

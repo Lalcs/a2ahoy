@@ -412,3 +412,65 @@ func TestClient_GetTask_Error(t *testing.T) {
 		t.Errorf("error should mention 404: %v", err)
 	}
 }
+
+func TestClient_CancelTask(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/tasks/task-001:cancel", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Errorf("authorization: got %q, want %q", got, "Bearer test-token")
+		}
+		if r.ContentLength != 0 {
+			t.Errorf("expected empty body, ContentLength=%d", r.ContentLength)
+		}
+		resp := wireTask{
+			ID:        "task-001",
+			ContextID: "ctx-001",
+			Status:    wireStatus{State: "TASK_STATE_CANCELED"},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	task, err := c.CancelTask(context.Background(), &a2a.CancelTaskRequest{
+		ID: a2a.TaskID("task-001"),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(task.ID) != "task-001" {
+		t.Errorf("ID: got %q, want %q", task.ID, "task-001")
+	}
+	if task.ContextID != "ctx-001" {
+		t.Errorf("ContextID: got %q, want %q", task.ContextID, "ctx-001")
+	}
+	if task.Status.State != a2a.TaskStateCanceled {
+		t.Errorf("Status.State: got %q, want %q", task.Status.State, a2a.TaskStateCanceled)
+	}
+}
+
+func TestClient_CancelTask_Error(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/tasks/missing:cancel", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "FAILED_PRECONDITION: TASK_NOT_CANCELABLE")
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	_, err := c.CancelTask(context.Background(), &a2a.CancelTaskRequest{
+		ID: a2a.TaskID("missing"),
+	})
+	if err == nil {
+		t.Fatal("expected error for 400")
+	}
+	if !strings.Contains(err.Error(), "400") {
+		t.Errorf("error should mention 400: %v", err)
+	}
+}

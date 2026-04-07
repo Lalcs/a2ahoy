@@ -215,6 +215,32 @@ func (c *Client) GetTask(ctx context.Context, a2aReq *a2a.GetTaskRequest) (*a2a.
 	return toA2ATask(wireResp), nil
 }
 
+// CancelTask cancels a task by ID via the Vertex AI A2A endpoint.
+func (c *Client) CancelTask(ctx context.Context, a2aReq *a2a.CancelTaskRequest) (*a2a.Task, error) {
+	cancelURL := c.endpoint.CancelTaskURL(string(a2aReq.ID))
+
+	req, err := c.newRequest(ctx, http.MethodPost, cancelURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("task cancel request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, readErrorResponse(resp)
+	}
+
+	var wireResp wireTask
+	if err := json.NewDecoder(resp.Body).Decode(&wireResp); err != nil {
+		return nil, fmt.Errorf("failed to decode cancel response: %w", err)
+	}
+	return toA2ATask(wireResp), nil
+}
+
 // Destroy is a no-op for the Vertex AI client (no persistent resources).
 func (c *Client) Destroy() error {
 	return nil
