@@ -4,6 +4,7 @@ set -euo pipefail
 REPO="Lalcs/a2ahoy"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 BINARY_NAME="a2ahoy"
+tmp_file=""
 
 # --- Helper functions ---
 
@@ -56,7 +57,7 @@ fetch_latest_version() {
 # --- Main ---
 
 main() {
-  local platform version download_url tmp_file
+  local platform version download_url
 
   info "Detecting platform..."
   platform="$(detect_platform)"

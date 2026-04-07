@@ -36,6 +36,20 @@ cd a2ahoy
 go build -o a2ahoy .
 ```
 
+### Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/uninstall.sh | bash
+```
+
+Removes `a2ahoy` from `/usr/local/bin` (or `${INSTALL_DIR}` if it was set during install). To uninstall from a custom directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/uninstall.sh | INSTALL_DIR=~/.local/bin bash
+```
+
+If the install directory is not writable, you will be prompted for `sudo`. The script also removes the `.bak` file left behind by `a2ahoy update` if present.
+
 ## Usage
 
 ### `card` — Fetch an agent card
