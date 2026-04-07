@@ -2,7 +2,7 @@
 
 ![](./docs/logo.svg)
 
-A Go CLI tool for interacting with [A2A (Agent-to-Agent)](https://google.github.io/A2A/) protocol agents.
+A Go CLI tool for interacting with [A2A (Agent-to-Agent)](https://a2a-protocol.org/latest/) protocol agents.
 
 ## Overview
 
