@@ -99,7 +99,8 @@ func checkDirWritable(dir string) error {
 	probe, err := os.CreateTemp(dir, ".a2ahoy-write-check-*")
 	if err != nil {
 		return fmt.Errorf(
-			"cannot write to %s: %w\nhint: re-run with sudo, or reinstall via install.sh",
+			"cannot write to %s: %w\nhint: reinstall via install.sh "+
+				"(installs to ~/.local/bin without sudo by default)",
 			dir, err)
 	}
 	probeName := probe.Name()

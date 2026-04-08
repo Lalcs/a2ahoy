@@ -151,9 +151,9 @@ func TestPrintUpdateDownloading(t *testing.T) {
 
 func TestPrintUpdateSuccess(t *testing.T) {
 	var buf bytes.Buffer
-	PrintUpdateSuccess(&buf, "v1.0.0", "v1.1.0", "/usr/local/bin/a2ahoy")
+	PrintUpdateSuccess(&buf, "v1.0.0", "v1.1.0", "/home/user/.local/bin/a2ahoy")
 	out := buf.String()
-	for _, sub := range []string{"Successfully updated", "v1.0.0", "v1.1.0", "/usr/local/bin/a2ahoy"} {
+	for _, sub := range []string{"Successfully updated", "v1.0.0", "v1.1.0", "/home/user/.local/bin/a2ahoy"} {
 		if !strings.Contains(out, sub) {
 			t.Errorf("output missing %q\nfull output:\n%s", sub, out)
 		}

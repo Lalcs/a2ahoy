@@ -1,24 +1,31 @@
 #!/bin/bash
 set -euo pipefail
 
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 BINARY_NAME="a2ahoy"
 
-# --- Helper functions ---
+# Degrade to plain text when stdout is not a terminal (e.g. log redirect).
+if [ -t 1 ]; then
+  C_RESET=$'\033[0m'
+  C_BLUE=$'\033[1;34m'
+  C_GREEN=$'\033[1;32m'
+  C_YELLOW=$'\033[1;33m'
+  C_RED=$'\033[1;31m'
+else
+  C_RESET=""
+  C_BLUE=""
+  C_GREEN=""
+  C_YELLOW=""
+  C_RED=""
+fi
 
-info()  { echo "[INFO]  $*"; }
-warn()  { echo "[WARN]  $*" >&2; }
-error() { echo "[ERROR] $*" >&2; exit 1; }
+info()    { printf '%s[INFO]%s  %s\n' "$C_BLUE"   "$C_RESET" "$*"; }
+success() { printf '%s[OK]%s    %s\n' "$C_GREEN"  "$C_RESET" "$*"; }
+warn()    { printf '%s[WARN]%s  %s\n' "$C_YELLOW" "$C_RESET" "$*" >&2; }
+error()   { printf '%s[ERROR]%s %s\n' "$C_RED"    "$C_RESET" "$*" >&2; exit 1; }
 
-# --- Resolve binary location ---
-#
-# Resolution order:
-#   1. ${INSTALL_DIR}/${BINARY_NAME} (matches install.sh default)
-#   2. `command -v` lookup as a fallback for binaries installed elsewhere
-#
-# We deliberately do NOT follow symlinks: package-manager installs
-# (Homebrew, apt) should be removed via the package manager.
-
+# Falls back to `command -v` so legacy /usr/local/bin installs are still found.
+# Does not follow symlinks: package-manager installs should be removed via the package manager.
 resolve_binary() {
   local candidate="${INSTALL_DIR}/${BINARY_NAME}"
 
@@ -34,8 +41,6 @@ resolve_binary() {
 
   return 1
 }
-
-# --- Remove a single path with sudo fallback ---
 
 remove_path() {
   local path="$1"
@@ -53,8 +58,6 @@ remove_path() {
     sudo rm -f "$path"
   fi
 }
-
-# --- Main ---
 
 main() {
   local binary_path binary_dir backup_path
@@ -86,10 +89,10 @@ main() {
     remove_path "$backup_path"
   fi
 
-  info "Successfully uninstalled ${BINARY_NAME} from ${binary_dir}"
+  success "Successfully uninstalled ${BINARY_NAME} from ${binary_dir}"
 
   if command -v "$BINARY_NAME" &>/dev/null; then
-    warn "Another ${BINARY_NAME} is still on your PATH at $(command -v ${BINARY_NAME})."
+    warn "Another ${BINARY_NAME} is still on your PATH at $(command -v "$BINARY_NAME")."
     warn "It was not removed by this script (likely installed via a package manager)."
   fi
 }

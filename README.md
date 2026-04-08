@@ -16,11 +16,37 @@ a2ahoy provides a simple command-line interface to communicate with A2A-compatib
 curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/install.sh | bash
 ```
 
-This automatically detects your OS/architecture and installs the latest release to `/usr/local/bin`. To change the install directory:
+This automatically detects your OS/architecture and installs the latest release to `~/.local/bin`. The installer will:
+
+1. Create `~/.local/bin` if it does not already exist.
+2. Download the binary for your platform.
+3. Check whether `~/.local/bin` is on your `PATH` and, if not, print the exact command for your shell (bash, zsh, or fish) to add it.
+
+No `sudo` is required for the default install path.
+
+> **Note**: If you previously installed `a2ahoy` to `/usr/local/bin`, remove the old copy first with `curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/uninstall.sh | INSTALL_DIR=/usr/local/bin bash` to avoid having two binaries on your `PATH`.
+
+### Custom install directory
+
+To install to a different location, set `INSTALL_DIR`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/install.sh | INSTALL_DIR=~/.local/bin bash
+curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/install.sh | INSTALL_DIR=/usr/local/bin bash
 ```
+
+System paths like `/usr/local/bin` will trigger a `sudo` prompt automatically.
+
+### PATH setup
+
+If `~/.local/bin` is not already on your `PATH`, the installer prints the exact command for your shell. For reference:
+
+| Shell | Command                                                         |
+|-------|-----------------------------------------------------------------|
+| bash  | `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`      |
+| zsh   | `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc`       |
+| fish  | `fish_add_path $HOME/.local/bin`                                |
+
+After running the command, restart your shell (or `source` the rc file) to pick up the new `PATH`.
 
 ### Uninstall
 
@@ -28,10 +54,12 @@ curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/install.sh | INST
 curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/uninstall.sh | bash
 ```
 
-Removes `a2ahoy` from `/usr/local/bin` (or `${INSTALL_DIR}` if it was set during install). To uninstall from a custom directory:
+Removes `a2ahoy` from `~/.local/bin` (or `${INSTALL_DIR}` if it was set during install). If the binary is not found there, the script falls back to wherever `a2ahoy` is currently on your `PATH`, so installs from older versions of the installer (which defaulted to `/usr/local/bin`) are also removed cleanly.
+
+To uninstall from a custom directory:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/uninstall.sh | INSTALL_DIR=~/.local/bin bash
+curl -fsSL https://raw.githubusercontent.com/Lalcs/a2ahoy/main/uninstall.sh | INSTALL_DIR=/usr/local/bin bash
 ```
 
 If the install directory is not writable, you will be prompted for `sudo`. The script also removes the `.bak` file left behind by `a2ahoy update` if present.
@@ -116,7 +144,7 @@ a2ahoy update --check-only
 a2ahoy update --force
 ```
 
-> **Note**: Supported platforms are Linux and macOS (amd64/arm64). Windows users should download new releases manually from the [releases page](https://github.com/Lalcs/a2ahoy/releases). If the install directory is not writable, re-run with `sudo` or use the `install.sh` script.
+> **Note**: Supported platforms are Linux and macOS (amd64/arm64). Windows users should download new releases manually from the [releases page](https://github.com/Lalcs/a2ahoy/releases). If the install directory is not writable (for example, when `a2ahoy` was installed to a system path like `/usr/local/bin`), reinstall using the `install.sh` script, which handles privilege escalation automatically.
 
 ## Global Flags
 

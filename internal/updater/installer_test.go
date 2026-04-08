@@ -111,8 +111,11 @@ func TestInstaller_Prepare_PermissionDenied(t *testing.T) {
 	if !strings.Contains(err.Error(), "cannot write to") {
 		t.Errorf("error should mention 'cannot write to': %v", err)
 	}
-	if !strings.Contains(err.Error(), "sudo") {
-		t.Errorf("error should hint at sudo: %v", err)
+	if !strings.Contains(err.Error(), "install.sh") {
+		t.Errorf("error should hint at install.sh: %v", err)
+	}
+	if !strings.Contains(err.Error(), "~/.local/bin") {
+		t.Errorf("error should mention default install path: %v", err)
 	}
 }
 
