@@ -1,6 +1,9 @@
 package vertexai
 
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/google/uuid"
 )
@@ -63,9 +66,9 @@ type wireArtifact struct {
 
 // --- Conversion functions ---
 
-// buildSendRequest converts an a2a.Message into a Vertex AI sendRequest.
-// It injects blocking: true by default.
-func buildSendRequest(msg *a2a.Message) sendRequest {
+// newWireMessage converts an a2a.Message to the Vertex AI wire format.
+// Shared by buildSendRequest and buildStreamRequest.
+func newWireMessage(msg *a2a.Message) wireMessage {
 	wm := wireMessage{
 		MessageID: msg.ID,
 		Role:      string(msg.Role),
@@ -78,12 +81,26 @@ func buildSendRequest(msg *a2a.Message) sendRequest {
 	if wm.MessageID == "" {
 		wm.MessageID = uuid.New().String()
 	}
+	return wm
+}
 
+// buildSendRequest converts an a2a.Message into a Vertex AI sendRequest
+// for the blocking message:send endpoint. It injects blocking: true.
+func buildSendRequest(msg *a2a.Message) sendRequest {
 	return sendRequest{
-		Message: wm,
+		Message: newWireMessage(msg),
 		Configuration: &wireConfig{
 			Blocking: true,
 		},
+	}
+}
+
+// buildStreamRequest converts an a2a.Message into a Vertex AI sendRequest
+// for the message:stream endpoint. Streaming is inherently non-blocking,
+// so Configuration is omitted to avoid a semantic mismatch with blocking: true.
+func buildStreamRequest(msg *a2a.Message) sendRequest {
+	return sendRequest{
+		Message: newWireMessage(msg),
 	}
 }
 
@@ -130,4 +147,96 @@ func wireMessageToA2A(wm *wireMessage) *a2a.Message {
 		ContextID: wm.ContextID,
 		TaskID:    a2a.TaskID(wm.TaskID),
 	}
+}
+
+// --- Stream event wire types ---
+//
+// Vertex AI streams StreamResponse proto messages serialized with
+// preserving_proto_field_name=False, so snake_case fields are emitted
+// as camelCase (e.g. status_update → statusUpdate). Exactly one oneof
+// variant is populated per event.
+
+type wireStreamEvent struct {
+	Task           *wireTask                `json:"task,omitempty"`
+	Msg            *wireMessage             `json:"msg,omitempty"`
+	StatusUpdate   *wireStatusUpdateEvent   `json:"statusUpdate,omitempty"`
+	ArtifactUpdate *wireArtifactUpdateEvent `json:"artifactUpdate,omitempty"`
+}
+
+type wireStatusUpdateEvent struct {
+	TaskID    string         `json:"taskId"`
+	ContextID string         `json:"contextId"`
+	Status    wireStatus     `json:"status"`
+	Final     bool           `json:"final,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
+}
+
+type wireArtifactUpdateEvent struct {
+	TaskID    string         `json:"taskId"`
+	ContextID string         `json:"contextId"`
+	Artifact  *wireArtifact  `json:"artifact,omitempty"`
+	Append    bool           `json:"append,omitempty"`
+	LastChunk bool           `json:"lastChunk,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
+}
+
+// parseStreamEvent decodes one SSE event payload into an a2a.Event.
+// Returns (nil, nil) for empty or unknown oneof variants so callers
+// can skip them without treating forward-compatible additions as errors.
+func parseStreamEvent(data []byte) (a2a.Event, error) {
+	var wse wireStreamEvent
+	if err := json.Unmarshal(data, &wse); err != nil {
+		return nil, fmt.Errorf("failed to decode stream event: %w", err)
+	}
+	return toA2AEvent(&wse), nil
+}
+
+// toA2AEvent converts a wireStreamEvent oneof into an a2a.Event, or
+// returns nil when no variant is populated.
+func toA2AEvent(wse *wireStreamEvent) a2a.Event {
+	switch {
+	case wse.Task != nil:
+		return toA2ATask(*wse.Task)
+	case wse.Msg != nil:
+		return wireMessageToA2A(wse.Msg)
+	case wse.StatusUpdate != nil:
+		return toA2AStatusUpdate(wse.StatusUpdate)
+	case wse.ArtifactUpdate != nil:
+		return toA2AArtifactUpdate(wse.ArtifactUpdate)
+	}
+	return nil
+}
+
+func toA2AStatusUpdate(w *wireStatusUpdateEvent) *a2a.TaskStatusUpdateEvent {
+	evt := &a2a.TaskStatusUpdateEvent{
+		TaskID:    a2a.TaskID(w.TaskID),
+		ContextID: w.ContextID,
+		Status: a2a.TaskStatus{
+			State: a2a.TaskState(w.Status.State),
+		},
+		Metadata: w.Metadata,
+	}
+	if w.Status.Message != nil {
+		evt.Status.Message = wireMessageToA2A(w.Status.Message)
+	}
+	return evt
+}
+
+func toA2AArtifactUpdate(w *wireArtifactUpdateEvent) *a2a.TaskArtifactUpdateEvent {
+	evt := &a2a.TaskArtifactUpdateEvent{
+		TaskID:    a2a.TaskID(w.TaskID),
+		ContextID: w.ContextID,
+		Append:    w.Append,
+		LastChunk: w.LastChunk,
+		Metadata:  w.Metadata,
+	}
+	if w.Artifact != nil {
+		evt.Artifact = &a2a.Artifact{
+			ID:          a2a.ArtifactID(w.Artifact.ArtifactID),
+			Parts:       a2a.ContentParts(w.Artifact.Parts),
+			Name:        w.Artifact.Name,
+			Description: w.Artifact.Description,
+		}
+	}
+	return evt
 }

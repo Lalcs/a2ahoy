@@ -113,11 +113,11 @@ func (c *Client) SendMessage(ctx context.Context, a2aReq *a2a.SendMessageRequest
 }
 
 // SendStreamingMessage sends a message to the Vertex AI streaming endpoint
-// and yields events as they arrive. Each SSE data line is parsed as a JSON
-// object and converted to an a2a.Event.
+// and yields events as they arrive. Multi-line JSON events from sse-starlette
+// are buffered per the SSE Living Standard and dispatched on blank lines.
 func (c *Client) SendStreamingMessage(ctx context.Context, a2aReq *a2a.SendMessageRequest) iter.Seq2[a2a.Event, error] {
 	return func(yield func(a2a.Event, error) bool) {
-		wireReq := buildSendRequest(a2aReq.Message)
+		wireReq := buildStreamRequest(a2aReq.Message)
 
 		body, err := json.Marshal(wireReq)
 		if err != nil {
@@ -145,42 +145,68 @@ func (c *Client) SendStreamingMessage(ctx context.Context, a2aReq *a2a.SendMessa
 			return
 		}
 
-		// Parse SSE stream: each "data: ..." line is a JSON event.
 		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1*1024*1024)
+
+		var dataBuf bytes.Buffer
+
+		// dispatch parses the accumulated data buffer as one stream event
+		// and yields it. Returns false if the caller stopped iterating.
+		dispatch := func() bool {
+			if dataBuf.Len() == 0 {
+				return true
+			}
+			// parseStreamEvent must run before Reset(): Buffer.Bytes()
+			// aliases the internal slice, which Reset() makes reusable.
+			event, err := parseStreamEvent(dataBuf.Bytes())
+			dataBuf.Reset()
+			if err != nil {
+				return yield(nil, err)
+			}
+			if event == nil {
+				return true
+			}
+			return yield(event, nil)
+		}
 
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			// Skip empty lines and non-data lines.
-			if !strings.HasPrefix(line, "data:") {
-				continue
-			}
-
-			data := strings.TrimPrefix(line, "data:")
-			data = strings.TrimSpace(data)
-			if data == "" {
-				continue
-			}
-
-			// Try to parse as a task response (most common).
-			var wireResp sendResponse
-			if err := json.Unmarshal([]byte(data), &wireResp); err != nil {
-				if !yield(nil, fmt.Errorf("failed to decode stream event: %w", err)) {
+			if line == "" {
+				if !dispatch() {
 					return
 				}
 				continue
 			}
-
-			task := toA2ATask(wireResp.Task)
-			if !yield(task, nil) {
-				return
+			if strings.HasPrefix(line, ":") {
+				continue
 			}
+
+			// Per SSE spec: split "field:value", strip a single leading
+			// space from value (not TrimSpace — trailing whitespace matters).
+			var field, value string
+			if idx := strings.IndexByte(line, ':'); idx >= 0 {
+				field = line[:idx]
+				value = strings.TrimPrefix(line[idx+1:], " ")
+			} else {
+				field = line
+			}
+
+			if field == "data" {
+				if dataBuf.Len() > 0 {
+					dataBuf.WriteByte('\n')
+				}
+				dataBuf.WriteString(value)
+			}
+			// event, id, retry fields are ignored.
 		}
 
 		if err := scanner.Err(); err != nil {
 			yield(nil, fmt.Errorf("stream read error: %w", err))
+			return
 		}
+
+		dispatch()
 	}
 }
 

@@ -474,3 +474,261 @@ func TestClient_CancelTask_Error(t *testing.T) {
 		t.Errorf("error should mention 400: %v", err)
 	}
 }
+
+// streamBodyHandler returns an HTTP handler that writes the given raw SSE
+// body verbatim to the response (no framing or encoding applied by the
+// test helper itself). Useful for simulating the exact on-the-wire output
+// of sse-starlette, including multi-line data: fields and CR/LF variants.
+func streamBodyHandler(t *testing.T, rawBody string) http.Handler {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/message:stream", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(rawBody))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	return mux
+}
+
+// collectStream drains SendStreamingMessage and returns the collected
+// events plus the first error encountered (nil if none).
+func collectStream(t *testing.T, c *Client) ([]a2a.Event, error) {
+	t.Helper()
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("stream test"))
+	msg.ID = "msg-test"
+
+	var events []a2a.Event
+	var firstErr error
+	for event, err := range c.SendStreamingMessage(context.Background(), &a2a.SendMessageRequest{Message: msg}) {
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		events = append(events, event)
+	}
+	return events, firstErr
+}
+
+// TestClient_SendStreamingMessage_MultiLineData verifies the parser handles
+// the real-world output of sse-starlette, which splits indented multi-line
+// JSON into one "data:" line per source line (per the SSE spec).
+func TestClient_SendStreamingMessage_MultiLineData(t *testing.T) {
+	// Simulates the exact format Vertex AI sends: MessageToJson with
+	// indent=2, then sse-starlette splitting each newline into its own
+	// "data:" line.
+	rawBody := "data: {\n" +
+		"data:   \"task\": {\n" +
+		"data:     \"id\": \"task-ml\",\n" +
+		"data:     \"contextId\": \"ctx-ml\",\n" +
+		"data:     \"status\": {\n" +
+		"data:       \"state\": \"TASK_STATE_WORKING\"\n" +
+		"data:     }\n" +
+		"data:   }\n" +
+		"data: }\n" +
+		"\n"
+
+	c, server := newTestClient(t, streamBodyHandler(t, rawBody))
+	defer server.Close()
+
+	events, err := collectStream(t, c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events: got %d, want 1", len(events))
+	}
+	task, ok := events[0].(*a2a.Task)
+	if !ok {
+		t.Fatalf("event[0]: got %T, want *a2a.Task", events[0])
+	}
+	if task.ID != "task-ml" {
+		t.Errorf("task.ID: got %q, want %q", task.ID, "task-ml")
+	}
+	if task.Status.State != a2a.TaskStateWorking {
+		t.Errorf("task.Status.State: got %q, want %q", task.Status.State, a2a.TaskStateWorking)
+	}
+}
+
+// TestClient_SendStreamingMessage_CommentLines verifies ":" comment lines
+// (SSE keep-alive / heartbeats) are skipped without disrupting event parsing.
+func TestClient_SendStreamingMessage_CommentLines(t *testing.T) {
+	rawBody := ": keep-alive\n" +
+		": another comment\n" +
+		"data: {\"task\":{\"id\":\"task-c\",\"status\":{\"state\":\"TASK_STATE_COMPLETED\"}}}\n" +
+		"\n"
+
+	c, server := newTestClient(t, streamBodyHandler(t, rawBody))
+	defer server.Close()
+
+	events, err := collectStream(t, c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events: got %d, want 1", len(events))
+	}
+	task := events[0].(*a2a.Task)
+	if task.ID != "task-c" {
+		t.Errorf("task.ID: got %q, want %q", task.ID, "task-c")
+	}
+}
+
+// TestClient_SendStreamingMessage_CRLF verifies CR/LF line endings are
+// supported (bufio.Scanner splits on \n and strips trailing \r).
+func TestClient_SendStreamingMessage_CRLF(t *testing.T) {
+	rawBody := "data: {\"task\":{\"id\":\"task-crlf\",\"status\":{\"state\":\"TASK_STATE_COMPLETED\"}}}\r\n\r\n"
+
+	c, server := newTestClient(t, streamBodyHandler(t, rawBody))
+	defer server.Close()
+
+	events, err := collectStream(t, c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events: got %d, want 1", len(events))
+	}
+	task := events[0].(*a2a.Task)
+	if task.ID != "task-crlf" {
+		t.Errorf("task.ID: got %q, want %q", task.ID, "task-crlf")
+	}
+}
+
+// TestClient_SendStreamingMessage_EventVariants is a smoke test that each
+// StreamResponse oneof variant (task/msg/statusUpdate/artifactUpdate) reaches
+// the caller as the correct a2a.Event type across the HTTP boundary.
+// Detailed field conversion is covered by wire_test.go's TestToA2AEvent_*.
+func TestClient_SendStreamingMessage_EventVariants(t *testing.T) {
+	rawBody := `data: {"task":{"id":"t1","status":{"state":"TASK_STATE_SUBMITTED"}}}` + "\n\n" +
+		`data: {"msg":{"messageId":"m1","role":"ROLE_AGENT","content":[{"text":"hi"}]}}` + "\n\n" +
+		`data: {"statusUpdate":{"taskId":"t1","contextId":"c1","status":{"state":"TASK_STATE_WORKING"}}}` + "\n\n" +
+		`data: {"artifactUpdate":{"taskId":"t1","contextId":"c1","artifact":{"artifactId":"a1","parts":[{"text":"chunk"}]}}}` + "\n\n"
+
+	c, server := newTestClient(t, streamBodyHandler(t, rawBody))
+	defer server.Close()
+
+	events, err := collectStream(t, c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 4 {
+		t.Fatalf("events: got %d, want 4", len(events))
+	}
+	if _, ok := events[0].(*a2a.Task); !ok {
+		t.Errorf("event[0]: got %T, want *a2a.Task", events[0])
+	}
+	if _, ok := events[1].(*a2a.Message); !ok {
+		t.Errorf("event[1]: got %T, want *a2a.Message", events[1])
+	}
+	if _, ok := events[2].(*a2a.TaskStatusUpdateEvent); !ok {
+		t.Errorf("event[2]: got %T, want *a2a.TaskStatusUpdateEvent", events[2])
+	}
+	if _, ok := events[3].(*a2a.TaskArtifactUpdateEvent); !ok {
+		t.Errorf("event[3]: got %T, want *a2a.TaskArtifactUpdateEvent", events[3])
+	}
+}
+
+// TestClient_SendStreamingMessage_MultipleEvents verifies that multiple
+// events separated by blank lines are each yielded in order.
+func TestClient_SendStreamingMessage_MultipleEvents(t *testing.T) {
+	rawBody := `data: {"task":{"id":"task-m","status":{"state":"TASK_STATE_WORKING"}}}` + "\n\n" +
+		`data: {"statusUpdate":{"taskId":"task-m","contextId":"ctx-m","status":{"state":"TASK_STATE_WORKING"}}}` + "\n\n" +
+		`data: {"task":{"id":"task-m","status":{"state":"TASK_STATE_COMPLETED"}}}` + "\n\n"
+
+	c, server := newTestClient(t, streamBodyHandler(t, rawBody))
+	defer server.Close()
+
+	events, err := collectStream(t, c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("events: got %d, want 3", len(events))
+	}
+
+	if task, ok := events[0].(*a2a.Task); !ok || task.Status.State != a2a.TaskStateWorking {
+		t.Errorf("event[0]: got %T state=%v, want Task working", events[0], task)
+	}
+	if _, ok := events[1].(*a2a.TaskStatusUpdateEvent); !ok {
+		t.Errorf("event[1]: got %T, want *a2a.TaskStatusUpdateEvent", events[1])
+	}
+	if task, ok := events[2].(*a2a.Task); !ok || task.Status.State != a2a.TaskStateCompleted {
+		t.Errorf("event[2]: got %T state=%v, want Task completed", events[2], task)
+	}
+}
+
+// TestClient_SendStreamingMessage_UnknownVariant verifies that an unknown
+// oneof variant is silently skipped rather than treated as an error.
+// This guarantees forward compatibility with future proto additions.
+func TestClient_SendStreamingMessage_UnknownVariant(t *testing.T) {
+	rawBody := `data: {"someFutureField":{"foo":"bar"}}` + "\n\n" +
+		`data: {"task":{"id":"task-u","status":{"state":"TASK_STATE_COMPLETED"}}}` + "\n\n"
+
+	c, server := newTestClient(t, streamBodyHandler(t, rawBody))
+	defer server.Close()
+
+	events, err := collectStream(t, c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events: got %d, want 1 (unknown variant should be skipped)", len(events))
+	}
+	if task := events[0].(*a2a.Task); task.ID != "task-u" {
+		t.Errorf("task.ID: got %q, want %q", task.ID, "task-u")
+	}
+}
+
+// TestClient_SendStreamingMessage_NoTrailingBlankLine verifies that an
+// event at the end of the stream is flushed even if the server did not
+// emit a trailing blank line before closing the connection.
+func TestClient_SendStreamingMessage_NoTrailingBlankLine(t *testing.T) {
+	rawBody := `data: {"task":{"id":"task-f","status":{"state":"TASK_STATE_COMPLETED"}}}` + "\n"
+
+	c, server := newTestClient(t, streamBodyHandler(t, rawBody))
+	defer server.Close()
+
+	events, err := collectStream(t, c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events: got %d, want 1 (final event should flush)", len(events))
+	}
+	if task := events[0].(*a2a.Task); task.ID != "task-f" {
+		t.Errorf("task.ID: got %q, want %q", task.ID, "task-f")
+	}
+}
+
+// TestClient_SendStreamingMessage_StreamRequestBody verifies that
+// SendStreamingMessage sends a request body *without* the blocking: true
+// configuration that buildSendRequest adds.
+func TestClient_SendStreamingMessage_StreamRequestBody(t *testing.T) {
+	var captured sendRequest
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/message:stream", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `data: {"task":{"id":"t"}}`+"\n\n")
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	_, _ = collectStream(t, c)
+
+	if captured.Configuration != nil {
+		t.Errorf("stream request Configuration: got %+v, want nil (stream should not send blocking: true)", captured.Configuration)
+	}
+	if captured.Message.MessageID == "" {
+		t.Error("stream request Message.MessageID: got empty, want auto-generated UUID")
+	}
+}
