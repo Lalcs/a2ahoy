@@ -202,13 +202,14 @@ a2ahoy update --force
 
 ## Global Flags
 
-| Flag             | Description                                                                                                                            |
-|------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| `--gcp-auth`     | Enable GCP authentication using Application Default Credentials                                                                        |
-| `--vertex-ai`    | Treat the URL as a Vertex AI Agent Engine endpoint                                                                                     |
-| `--bearer-token` | Set a Bearer token for authentication. Falls back to the `A2A_BEARER_TOKEN` env var. Cannot be combined with `--gcp-auth` or `--vertex-ai`. |
-| `--json`         | Output raw indented JSON instead of human-readable format                                                                              |
-| `--header`       | Add a custom HTTP header in `KEY=VALUE` form. Repeat the flag to send multiple headers.                                                |
+| Flag               | Description                                                                                                                            |
+|--------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `--gcp-auth`       | Enable GCP authentication using Application Default Credentials                                                                        |
+| `--vertex-ai`      | Treat the URL as a Vertex AI Agent Engine endpoint                                                                                     |
+| `--v03-rest-mount` | Apply an A2A v0.3 REST `/v1` mount-point rewrite to card URLs for Python `a2a-sdk` / Google ADK / Vertex AI Agent Engine peers.        |
+| `--bearer-token`   | Set a Bearer token for authentication. Falls back to the `A2A_BEARER_TOKEN` env var. Cannot be combined with `--gcp-auth` or `--vertex-ai`. |
+| `--json`           | Output raw indented JSON instead of human-readable format                                                                              |
+| `--header`         | Add a custom HTTP header in `KEY=VALUE` form. Repeat the flag to send multiple headers.                                                |
 
 ### Examples
 
@@ -242,6 +243,36 @@ A2A_BEARER_TOKEN=eyJhbGc... a2ahoy send https://my-agent.example.com "Hello"
 > additional `=` characters (e.g., `--header "X-Token=a=b=c"`). An empty value
 > (`--header "X-Foo="`) is allowed. Malformed entries cause the command to
 > exit with a non-zero status and an `invalid --header` error message.
+
+## Protocol Compatibility
+
+a2ahoy talks to A2A agents over the transports listed below. The CLI
+auto-selects a transport from the agent card advertised by the server.
+
+| A2A version | JSON-RPC over HTTP | HTTP+JSON (REST) | gRPC    |
+|-------------|--------------------|------------------|---------|
+| v0.3.x      | Supported          | Supported\*      | Planned |
+| v1.0        | Planned            | Planned          | Planned |
+
+In addition, Vertex AI Agent Engine endpoints are supported through a
+dedicated client that speaks a Vertex-specific HTTP+JSON wire format. Enable
+it with `--vertex-ai`; see the next section for details.
+
+> **Note**: \*Some v0.3 servers (Python `a2a-sdk`, Google ADK's `to_a2a()`,
+> Vertex AI Agent Engine's non-Vertex route) mount HTTP+JSON routes under a
+> `/v1` prefix that their agent cards do not advertise. Pass `--v03-rest-mount`
+> to rewrite card URLs client-side so `send` / `stream` / `get` / `cancel`
+> resolve against the correct path. Native a2a-go v0.3 servers that advertise
+> the full URL should be addressed as-is (the default).
+
+> **Note**: A2A v1.0 changes the JSON-RPC method names (`SendMessage` instead
+> of `message/send`, etc.) and REST endpoint layout relative to v0.3. Native
+> v1.0 server implementations are not yet available in the wider ecosystem,
+> so v1.0 rows are marked as `Planned` until end-to-end support is verified.
+> gRPC is recognised by the agent-card validator but not yet wired into the
+> client transport layer. A2A protocol versions older than v0.3 (e.g. v0.2.x)
+> are not supported because the upstream `a2a-go` compat library does not
+> parse them.
 
 ### Vertex AI Agent Engine
 
