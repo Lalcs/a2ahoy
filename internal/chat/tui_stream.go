@@ -54,7 +54,6 @@ func (m Model) startStream(req *a2a.SendMessageRequest) (tea.Model, tea.Cmd) {
 	m.streaming = true
 	m.streamBuf.Reset()
 	m.lastTurnInfo = a2a.TaskInfo{}
-	m.errMsg = ""
 
 	// Capture the client by value into the goroutine so there is no
 	// race with the Update loop reassigning m.client (which never

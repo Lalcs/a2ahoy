@@ -13,8 +13,7 @@ import (
 const (
 	headerHeight    = 1 // 1 line for agent name banner
 	inputHeight     = 3 // borderlines + content
-	statusBarHeight = 1
-	errLineHeight   = 1
+	statusBarHeight = 1 // hint + keybindings on a single row
 )
 
 // Update satisfies tea.Model. The switch is ordered so specific
@@ -34,8 +33,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case slashResultMsg:
 		return m.handleSlashResult(msg)
 	case errDisplayMsg:
-		m.errMsg = msg.msg
-		m.recalcLayout()
+		// Errors are part of the transcript so they scroll with the
+		// conversation — no need to touch layout.
+		m.appendMessage(roleError, msg.msg)
 		return m, nil
 	case spinner.TickMsg:
 		// While streaming, advance the spinner and let it self-schedule
@@ -80,28 +80,25 @@ func (m Model) handleResize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.textInput.SetWidth(iw)
 
 	// Compute viewport height from the current chrome (header + input
-	// + status + optional error line + optional dropdown). Centralised
-	// in recalcLayout so callers triggered by chrome-affecting state
-	// changes (suggestion toggle, errMsg update) can reuse the math.
+	// + status bar + optional dropdown). Centralised in recalcLayout
+	// so callers triggered by chrome-affecting state changes
+	// (suggestion toggle) can reuse the math.
 	m.recalcLayout()
 	return m, nil
 }
 
 // recalcLayout resizes the viewport based on the current chrome
-// height. Chrome includes the header, input, status bar, optional
-// error line, and — when visible — the suggestion dropdown.
+// height. Chrome always includes the header, input, and status
+// bar, plus the suggestion dropdown when visible.
 //
 // Call this whenever a state change may affect the chrome height
-// (resize, showSuggestions toggle, errMsg update). Safe to call
-// before the first WindowSizeMsg: returns early if !m.ready.
+// (resize, showSuggestions toggle). Safe to call before the first
+// WindowSizeMsg: returns early if !m.ready.
 func (m *Model) recalcLayout() {
 	if !m.ready {
 		return
 	}
 	chrome := headerHeight + inputHeight + statusBarHeight
-	if m.errMsg != "" {
-		chrome += errLineHeight
-	}
 	if m.showSuggestions && len(m.suggestions) > 0 {
 		// 1 line per suggestion + 2 for the top/bottom border that
 		// suggBoxStyle (NormalBorder) draws around the box.
@@ -135,19 +132,17 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "enter":
 		// When the dropdown is open with a selection, Enter accepts
-		// the suggestion instead of submitting — the user still has
-		// to hit Enter again to actually send the command, which
-		// matches the "confirm then commit" convention of shell
-		// autocomplete and gives IME users a safety beat between
-		// conversion confirm and command send.
+		// the suggestion AND immediately submits it — the fast path
+		// for users who just want to fire off an argument-less slash
+		// command in a single keystroke. Tab remains the "accept but
+		// keep typing" variant for commands that take arguments.
 		if m.showSuggestions && m.selectedSugg >= 0 && m.selectedSugg < len(m.suggestions) {
 			m.acceptSuggestion()
-			return m, nil
 		}
 		return m.submitInput()
 
 	case "tab":
-		if m.showSuggestions && len(m.suggestions) > 0 {
+		if m.showSuggestions && m.selectedSugg >= 0 && m.selectedSugg < len(m.suggestions) {
 			m.acceptSuggestion()
 			return m, nil
 		}
@@ -191,11 +186,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Normal key event: let textinput process it, then reassess
-	// suggestion visibility based on the new value. The error line
-	// is cleared on any keystroke so stale errors don't linger.
-	// updateSuggestions calls recalcLayout, so the cleared errMsg
-	// (and the new dropdown state) are both reflected in one pass.
-	m.errMsg = ""
+	// suggestion visibility based on the new value. updateSuggestions
+	// calls recalcLayout so the new dropdown state is reflected.
 	var cmd tea.Cmd
 	m.textInput, cmd = m.textInput.Update(msg)
 	m.updateSuggestions()
@@ -219,12 +211,17 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Echo the user's input into the transcript regardless of whether
+	// it is a slash command or a normal message, so the log reads
+	// like a coherent REPL session ("you: /help" followed by the
+	// help output, etc.).
+	m.appendMessage(roleUser, text)
+
 	if isSlash {
 		return m.dispatchSlash(sc)
 	}
 
-	// Regular message → append to transcript, then kick off stream.
-	m.appendMessage(roleUser, text)
+	// Regular message → kick off the streaming turn.
 	req := BuildChatRequest(&m.state, text)
 	return m.startStream(req)
 }

@@ -4,23 +4,26 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// TUI colour palette. Kept as named constants so tweaks stay in one place
-// and the styles read declaratively below.
+// TUI colour palette, aligned with the A2Ahoy logo (docs/logo.svg,
+// docs/logo-concept.md). Kept as named constants so tweaks stay in one
+// place and the styles read declaratively below.
 const (
-	// Brand-ish accent used for headers and selected suggestions.
-	colorAccent = "#5F5FFF"
-	// Neutral border / dim text.
-	colorBorder = "#888888"
+	// Logo primary (Google Blue). Header background, selected
+	// suggestion background, border accents.
+	colorAccent = "#1A73E8"
+	// Neutral border / dim text. Matches the logo subtitle colour.
+	colorBorder = "#666666"
 	// Soft foreground for regular body text.
 	colorFgDim = "#DDDDDD"
-	// Error red.
+	// Error red. Not present in the logo, kept for UI convention.
 	colorError = "#FF5555"
-	// System / meta message colour (italic grey).
-	colorSystem = "#888888"
-	// User message (the person typing) — cool cyan.
-	colorUser = "#87CEEB"
-	// Agent response — calm green.
-	colorAgent = "#90EE90"
+	// System / meta message colour. Aligned with the border grey.
+	colorSystem = "#666666"
+	// User message (the person typing) — signal green, matching the
+	// logo's signal ring.
+	colorUser = "#34A853"
+	// Agent response — a lighter variant of the primary blue.
+	colorAgent = "#4285F4"
 	// Status bar background.
 	colorStatusBg = "#1F1F1F"
 )

@@ -23,7 +23,11 @@ import (
 // tea.View struct in Model.View, as Bubble Tea v2 no longer uses
 // program-level options for these.
 func RunTUI(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, baseURL string) error {
-	m := newModel(ctx, c, card, baseURL)
+	// baseURL is accepted for symmetry with RunSimple but not used by
+	// the TUI itself — the header no longer displays it and the user
+	// already knows the URL from the command line invocation.
+	_ = baseURL
+	m := newModel(ctx, c, card)
 	p := tea.NewProgram(m, tea.WithContext(ctx))
 	if _, err := p.Run(); err != nil {
 		// Suppress tea.ErrProgramKilled / ErrInterrupted so Ctrl+C at

@@ -55,7 +55,6 @@ type Model struct {
 	// Injected dependencies.
 	client    client.A2AClient
 	agentCard *a2a.AgentCard
-	baseURL   string
 
 	// Shared chat state: taskId / contextId used for continuation.
 	state State
@@ -90,19 +89,20 @@ type Model struct {
 	// Layout.
 	width, height int
 	ready         bool // true once we have received at least one WindowSizeMsg
-
-	// Transient error line rendered below the input. Cleared on the
-	// next successful action so one-off errors don't linger forever.
-	errMsg string
 }
 
 // newModel constructs a Model wired to the given client and card.
 // The textinput is focused immediately so the user can start typing
 // without any additional key press.
-func newModel(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, baseURL string) Model {
+func newModel(ctx context.Context, c client.A2AClient, card *a2a.AgentCard) Model {
 	ti := textinput.New()
 	ti.Prompt = "› "
-	ti.Placeholder = "Type a message or / for commands"
+	// No Placeholder: in a terminal TUI the OS-level IME draws its
+	// composition buffer as an overlay over the input area while the
+	// app sees an empty value. A placeholder would collide with that
+	// overlay and stay visible while the user is mid-composition.
+	// The same hint is rendered in the status bar instead (see
+	// renderStatusBar in tui_view.go), where IME overlays never land.
 	ti.CharLimit = 0
 	ti.Focus()
 
@@ -121,7 +121,6 @@ func newModel(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, base
 		ctx:       ctx,
 		client:    c,
 		agentCard: card,
-		baseURL:   baseURL,
 		viewport:  vp,
 		textInput: ti,
 		spinner:   sp,

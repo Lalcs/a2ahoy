@@ -41,12 +41,10 @@ func (m Model) dispatchSlash(sc SlashCmd) (tea.Model, tea.Cmd) {
 		return m.handleCancel(sc.Arg)
 	case "":
 		// A bare "/" typed by itself.
-		m.errMsg = "enter a command name after / (try /help)"
-		m.recalcLayout()
+		m.appendMessage(roleError, "enter a command name after / (try /help)")
 		return m, nil
 	default:
-		m.errMsg = fmt.Sprintf("unknown command: /%s (try /help)", sc.Name)
-		m.recalcLayout()
+		m.appendMessage(roleError, fmt.Sprintf("unknown command: /%s (try /help)", sc.Name))
 		return m, nil
 	}
 }
@@ -86,8 +84,7 @@ func (m Model) handleNew() (tea.Model, tea.Cmd) {
 func (m Model) handleGet(arg string) (tea.Model, tea.Cmd) {
 	targetID, err := m.state.ResolveTaskID(arg, "get")
 	if err != nil {
-		m.errMsg = err.Error()
-		m.recalcLayout()
+		m.appendMessage(roleError, err.Error())
 		return m, nil
 	}
 	ctx, c := m.ctx, m.client
@@ -103,8 +100,7 @@ func (m Model) handleGet(arg string) (tea.Model, tea.Cmd) {
 func (m Model) handleCancel(arg string) (tea.Model, tea.Cmd) {
 	targetID, err := m.state.ResolveTaskID(arg, "cancel")
 	if err != nil {
-		m.errMsg = err.Error()
-		m.recalcLayout()
+		m.appendMessage(roleError, err.Error())
 		return m, nil
 	}
 	ctx, c := m.ctx, m.client
