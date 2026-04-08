@@ -88,6 +88,12 @@ func TestStyledHelpers_NoColor(t *testing.T) {
 	if got := styledSuccess("agent"); got != "agent" {
 		t.Errorf("styledSuccess = %q, want %q", got, "agent")
 	}
+	if got := styledWarning("[WARN]"); got != "[WARN]" {
+		t.Errorf("styledWarning = %q, want %q", got, "[WARN]")
+	}
+	if got := styledError("[ERROR]"); got != "[ERROR]" {
+		t.Errorf("styledError = %q, want %q", got, "[ERROR]")
+	}
 }
 
 func TestStyledHelpers_WithColor(t *testing.T) {

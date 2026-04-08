@@ -34,6 +34,15 @@ func styledTag(s string) string { return labelStyle.Sprint(s) }
 // styledSuccess formats a success value (e.g., agent name).
 func styledSuccess(s string) string { return greenStyle.Sprint(s) }
 
+// styledWarning formats a caution message (e.g., "[WARN]" or
+// "update available"). Yellow is reserved for non-blocking issues that
+// the user should see but can continue past.
+func styledWarning(s string) string { return yellowStyle.Sprint(s) }
+
+// styledError formats a failure message (e.g., "[ERROR]" or
+// "invalid latest tag"). Red is reserved for blocking conditions.
+func styledError(s string) string { return redStyle.Sprint(s) }
+
 // styledTaskState returns the colored string for a task state.
 func styledTaskState(state a2a.TaskState) string {
 	switch state {

@@ -65,17 +65,17 @@ func PrintUpdateSuccess(w io.Writer, oldVer, newVer, targetPath string) {
 func styledUpdateAction(a updater.Action) string {
 	switch a {
 	case updater.ActionUpToDate:
-		return greenStyle.Sprint("up to date")
+		return styledSuccess("up to date")
 	case updater.ActionUpdate:
-		return yellowStyle.Sprint("update available")
+		return styledWarning("update available")
 	case updater.ActionDevelopment:
-		return yellowStyle.Sprint("development build (will install latest)")
+		return styledWarning("development build (will install latest)")
 	case updater.ActionAhead:
-		return yellowStyle.Sprint("ahead of latest")
+		return styledWarning("ahead of latest")
 	case updater.ActionForceReinstall:
-		return yellowStyle.Sprint("force reinstall")
+		return styledWarning("force reinstall")
 	case updater.ActionInvalidLatest:
-		return redStyle.Sprint("invalid latest tag")
+		return styledError("invalid latest tag")
 	default:
 		return "unknown"
 	}

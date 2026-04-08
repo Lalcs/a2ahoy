@@ -32,13 +32,27 @@ type Options struct {
 // A2A client optionally with GCP ID token authentication.
 func New(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, error) {
 	if opts.VertexAI {
-		return newVertexAI(ctx, opts)
+		// resolveVertexAICard returns a concrete *vertexai.Client, which
+		// satisfies A2AClient. Tuple return types must match exactly, so
+		// we destructure and re-return rather than forwarding directly.
+		vc, card, err := resolveVertexAICard(ctx, opts)
+		if err != nil {
+			return nil, nil, err
+		}
+		return vc, card, nil
 	}
 	return newStandard(ctx, opts)
 }
 
-// newVertexAI creates a Vertex AI A2A client.
-func newVertexAI(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, error) {
+// resolveVertexAICard parses the Vertex AI endpoint, configures the GCP
+// OAuth2 access-token interceptor, applies --header entries, and fetches
+// the agent card.
+//
+// Shared by New (uses the returned client) and ResolveCard (discards
+// it — vertexai.Client.Destroy() is a no-op, see internal/vertexai/client.go).
+// applyVertexAIHeaders is called before FetchCard so that --header values are
+// applied to the card-fetch request itself.
+func resolveVertexAICard(ctx context.Context, opts Options) (*vertexai.Client, *a2a.AgentCard, error) {
 	endpoint, err := vertexai.ParseEndpoint(opts.BaseURL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid Vertex AI endpoint: %w", err)
@@ -80,6 +94,13 @@ func newVertexAI(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 //   - safe for display — no caller of New currently displays
 //     SupportedInterfaces[].URL from the card it receives; the `card`
 //     subcommand uses ResolveCard, which does not invoke this function.
+//
+// See also: internal/cardcheck.checkV03HTTPJSONMissingV1 is the display-
+// side counterpart that reports this condition as a warning without
+// mutating the card. The predicate (HTTP+JSON && protocol version starts
+// with "0.3" && URL does not end in "/v1") must stay in sync between the
+// two functions; tests in both packages enumerate the same matrix so
+// drift is caught in CI.
 func applyV1PathPrefix(card *a2a.AgentCard) {
 	if card == nil {
 		return
@@ -146,7 +167,40 @@ func applyVertexAIHeaders(vc *vertexai.Client, headers []string) error {
 	return nil
 }
 
-// newStandard creates a standard A2A client.
+// newStandard creates a standard A2A client by resolving the agent card
+// and then building a client from it.
+//
+// applyV1PathPrefix is invoked here (not inside resolveStandardCard) so
+// that ResolveCard, which shares resolveStandardCard, does not rewrite
+// the card URLs — preserving the distinction that the `card` subcommand
+// displays raw URLs while send/stream/get/cancel use the workaround.
+func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, error) {
+	card, clientOpts, err := resolveStandardCard(ctx, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Workaround for upstream a2a-go bug: the v0.3 REST compat transport
+	// omits the "/v1" prefix from paths like /message:send, but the A2A
+	// v0.3 spec (and Python a2a-sdk, its reference implementation) serves
+	// routes under /v1/*. Without this, `send`/`stream`/`get`/`cancel`
+	// against Python a2a-sdk servers returns 404. See applyV1PathPrefix.
+	applyV1PathPrefix(card)
+
+	client, err := a2aclient.NewFromCard(ctx, card, clientOpts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create A2A client: %w", err)
+	}
+	return client, card, nil
+}
+
+// resolveStandardCard assembles auth resolveOpts and clientOpts from the
+// caller's Options, runs the v0-compat agent-card resolver, and returns
+// both the parsed card and the clientOpts slice.
+//
+// Shared by newStandard (which also calls applyV1PathPrefix and
+// a2aclient.NewFromCard) and ResolveCard (which discards clientOpts
+// because it never constructs a long-lived client).
 //
 // The client is configured to support both A2A spec v1.0 and v0.3 servers:
 //   - The agent card is parsed with the v0 compat parser, which handles both
@@ -155,7 +209,7 @@ func applyVertexAIHeaders(vc *vertexai.Client, headers []string) error {
 //     transports are registered via WithCompatTransport so that send/stream
 //     commands work against both v1.0 and v0.3 servers (e.g., Python a2a-sdk
 //     0.3.x / Google ADK).
-func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, error) {
+func resolveStandardCard(ctx context.Context, opts Options) (*a2a.AgentCard, []a2aclient.FactoryOption, error) {
 	var resolveOpts []agentcard.ResolveOption
 	var clientOpts []a2aclient.FactoryOption
 
@@ -185,13 +239,15 @@ func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 
 	// Inject user-supplied headers (--header flag) into both the card
 	// resolver and the call interceptor chain so every outgoing request
-	// carries them.
+	// carries them. The interceptor is only registered when there is at
+	// least one header entry, so ResolveCard's one-shot path does not
+	// allocate an empty interceptor.
 	headerEntries, err := parseOptionHeaders(opts.Headers)
 	if err != nil {
 		return nil, nil, err
 	}
+	resolveOpts = appendHeaderResolveOpts(resolveOpts, headerEntries)
 	if len(headerEntries) > 0 {
-		resolveOpts = appendHeaderResolveOpts(resolveOpts, headerEntries)
 		clientOpts = append(clientOpts, a2aclient.WithCallInterceptors(auth.NewHeaderInterceptor(headerEntries)))
 	}
 
@@ -222,18 +278,7 @@ func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 		return nil, nil, fmt.Errorf("failed to resolve agent card: %w", err)
 	}
 
-	// Workaround for upstream a2a-go bug: the v0.3 REST compat transport
-	// omits the "/v1" prefix from paths like /message:send, but the A2A
-	// v0.3 spec (and Python a2a-sdk, its reference implementation) serves
-	// routes under /v1/*. Without this, `send`/`stream`/`get`/`cancel`
-	// against Python a2a-sdk servers returns 404. See applyV1PathPrefix.
-	applyV1PathPrefix(card)
-
-	client, err := a2aclient.NewFromCard(ctx, card, clientOpts...)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create A2A client: %w", err)
-	}
-	return client, card, nil
+	return card, clientOpts, nil
 }
 
 // ResolveCard fetches and parses an agent card without creating an A2A client.
@@ -245,61 +290,29 @@ func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 // default v1.0-only client constructor.
 //
 // Both v1.0 and v0.3 card formats are supported via the v0 compat parser.
+//
+// Card-resolution logic is shared with New via resolveVertexAICard and
+// resolveStandardCard; ResolveCard deliberately skips client construction
+// and the applyV1PathPrefix URL rewrite applied by newStandard.
 func ResolveCard(ctx context.Context, opts Options) (*a2a.AgentCard, error) {
 	if opts.VertexAI {
-		endpoint, err := vertexai.ParseEndpoint(opts.BaseURL)
+		// resolveVertexAICard is shared with newVertexAI; the returned
+		// *vertexai.Client is discarded here because Destroy() is a no-op.
+		_, card, err := resolveVertexAICard(ctx, opts)
 		if err != nil {
-			return nil, fmt.Errorf("invalid Vertex AI endpoint: %w", err)
-		}
-
-		interceptor, err := auth.NewGCPAccessTokenInterceptor(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("GCP access token auth setup failed: %w", err)
-		}
-
-		vc := vertexai.NewClient(endpoint, interceptor.GetToken)
-		if err := applyVertexAIHeaders(vc, opts.Headers); err != nil {
 			return nil, err
-		}
-		card, err := vc.FetchCard(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch Vertex AI agent card: %w", err)
 		}
 		return card, nil
 	}
 
-	var resolveOpts []agentcard.ResolveOption
-	if opts.BearerToken != "" {
-		resolveOpts = appendBearerResolveOpts(resolveOpts, opts.BearerToken)
-	} else if opts.GCPAuth {
-		interceptor, err := auth.NewGCPAuthInterceptor(ctx, opts.BaseURL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create GCP auth: %w", err)
-		}
-
-		token, err := interceptor.GetToken()
-		if err != nil {
-			return nil, fmt.Errorf("failed to obtain initial token: %w", err)
-		}
-		resolveOpts = appendBearerResolveOpts(resolveOpts, token)
-	}
-
-	// Inject user-supplied headers (--header flag) into the card
-	// resolution request. No call interceptor is needed here because
-	// ResolveCard does not construct a long-lived A2A client.
-	headerEntries, err := parseOptionHeaders(opts.Headers)
+	// resolveStandardCard is shared with newStandard; the returned
+	// clientOpts are discarded here because ResolveCard never constructs
+	// a long-lived A2A client. applyV1PathPrefix is also intentionally
+	// skipped so that the `card` subcommand displays raw URLs from the
+	// server rather than the workaround-rewritten URLs.
+	card, _, err := resolveStandardCard(ctx, opts)
 	if err != nil {
 		return nil, err
-	}
-	resolveOpts = appendHeaderResolveOpts(resolveOpts, headerEntries)
-
-	resolver := &agentcard.Resolver{
-		Client:     agentcard.DefaultResolver.Client,
-		CardParser: a2av0.NewAgentCardParser(),
-	}
-	card, err := resolver.Resolve(ctx, opts.BaseURL, resolveOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve agent card: %w", err)
 	}
 	return card, nil
 }
