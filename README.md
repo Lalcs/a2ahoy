@@ -10,7 +10,7 @@ A Go CLI tool for interacting with [A2A (Agent-to-Agent)](https://a2a-protocol.o
 
 ## Overview
 
-a2ahoy provides a simple command-line interface to communicate with A2A-compatible agents. You can fetch agent cards, send messages, stream responses, and manage tasks — with optional GCP authentication. It also supports [Vertex AI Agent Engine](https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview) endpoints.
+a2ahoy provides a simple command-line interface to communicate with A2A-compatible agents. You can fetch agent cards, send one-shot messages, stream responses, manage tasks, and hold multi-turn conversations through an interactive TUI chat mode — with optional GCP authentication. It also supports [Vertex AI Agent Engine](https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview) endpoints.
 
 ## Installation
 
@@ -93,6 +93,58 @@ a2ahoy stream https://example.com "Tell me a story"
 ```
 
 Press `Ctrl+C` to gracefully interrupt a streaming session.
+
+### `chat` — Interactive chat REPL
+
+Starts a multi-turn conversation with an agent. `contextId` and `taskId` are automatically carried across turns so follow-up messages continue the same task without any manual bookkeeping.
+
+```bash
+a2ahoy chat https://example.com
+```
+
+By default, `chat` runs a rich TUI (built with [Bubble Tea](https://charm.sh/libs#bubbletea)) with:
+
+- Scrollable conversation history (`↑` / `↓` / `PgUp` / `PgDn` / mouse wheel)
+- Slash-command autocomplete — type `/` to see suggestions, `Tab` to accept, arrow keys to select
+- A status bar showing the current `taskId` / `contextId` and a streaming indicator
+
+**Slash commands:**
+
+| Command        | Description                                              |
+|----------------|----------------------------------------------------------|
+| `/new`         | Start a new conversation (resets task/context)           |
+| `/get [id]`    | Show current task (or the given task id)                 |
+| `/cancel [id]` | Cancel current task (or the given task id)               |
+| `/help`        | Show the command reference                               |
+| `/exit`, `/quit` | Exit the chat                                          |
+
+**Keybindings:**
+
+| Key          | Behaviour                                                                    |
+|--------------|------------------------------------------------------------------------------|
+| `Enter`      | Send the current message (or accept a suggestion when the dropdown is open) |
+| `Tab`        | Accept the highlighted suggestion                                            |
+| `Esc`        | Close the suggestion dropdown                                                |
+| `Ctrl+C`     | Cancel an in-flight streaming request; at the prompt, exits the chat        |
+| `Ctrl+D`     | Exit the chat (EOF)                                                          |
+
+**Flags:**
+
+| Flag       | Description                                                                                     |
+|------------|-------------------------------------------------------------------------------------------------|
+| `--simple` | Use a line-mode REPL (`bufio.Scanner`) instead of the TUI. IME-safe, dependency-free fallback. |
+
+`--json` is incompatible with the TUI: when `--json` is set, `chat` automatically runs in simple mode so machine-readable output can be piped or logged.
+
+**IME note:** The TUI relies on the terminal being in raw mode, which can interact poorly with some IME setups (most commonly Fcitx5 / IBus on Linux). If Japanese, Chinese, or Korean input is broken in the TUI, use `--simple` to get a line-mode REPL that delegates composition to the terminal and OS.
+
+```bash
+# Line-mode fallback (IME-safe)
+a2ahoy chat https://example.com --simple
+
+# Machine-parseable streaming JSON (implies simple mode)
+a2ahoy chat https://example.com --json
+```
 
 ### `get` — Retrieve a task by ID
 

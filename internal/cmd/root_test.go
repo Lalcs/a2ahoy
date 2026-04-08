@@ -24,7 +24,7 @@ func TestRootCommand_HasSubcommands(t *testing.T) {
 		names[cmd.Name()] = true
 	}
 
-	expected := []string{"cancel", "card", "get", "send", "stream", "update"}
+	expected := []string{"cancel", "card", "chat", "get", "send", "stream", "update"}
 	for _, name := range expected {
 		if !names[name] {
 			t.Errorf("missing subcommand %q", name)
@@ -181,6 +181,41 @@ func TestCancelCommand_TooManyArgs(t *testing.T) {
 	err := rootCmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for too many args")
+	}
+}
+
+func TestChatCommand_MissingArgs(t *testing.T) {
+	rootCmd.SetArgs([]string{"chat"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for missing args")
+	}
+}
+
+func TestChatCommand_TooManyArgs(t *testing.T) {
+	rootCmd.SetArgs([]string{"chat", "url1", "url2"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for too many args")
+	}
+}
+
+func TestChatCommand_HasSimpleFlag(t *testing.T) {
+	// The chat command must expose --simple as a local flag so users can
+	// opt out of the TUI when IME or pipeline constraints demand
+	// line-mode input.
+	f := chatCmd.Flags().Lookup("simple")
+	if f == nil {
+		t.Fatal("chat command missing --simple flag")
+	}
+	if got := f.Value.Type(); got != "bool" {
+		t.Errorf("--simple flag type: got %q, want %q", got, "bool")
 	}
 }
 

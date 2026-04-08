@@ -3,6 +3,7 @@ package presenter
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
 )
@@ -88,4 +89,31 @@ func printParts(w io.Writer, parts a2a.ContentParts) {
 			fmt.Fprintf(w, "%s\n", styledTag("[unknown part type]"))
 		}
 	}
+}
+
+// TextFromParts concatenates the textual payload of a ContentParts slice
+// into a single string. Non-text parts are summarised inline so callers
+// that only need a flat text snapshot — like the chat TUI viewport —
+// can reuse the same extraction logic without writing to an io.Writer.
+//
+// The output is plain (no ANSI styling) so it is safe to feed into
+// further rendering layers like lipgloss.
+func TextFromParts(parts a2a.ContentParts) string {
+	var sb strings.Builder
+	for _, p := range parts {
+		if p == nil {
+			continue
+		}
+		switch p.Content.(type) {
+		case a2a.Text:
+			sb.WriteString(p.Text())
+		case a2a.Data:
+			fmt.Fprintf(&sb, "[data: %v]", p.Data())
+		case a2a.URL:
+			fmt.Fprintf(&sb, "[url: %s]", p.URL())
+		case a2a.Raw:
+			fmt.Fprintf(&sb, "[raw: %d bytes]", len(p.Raw()))
+		}
+	}
+	return sb.String()
 }
