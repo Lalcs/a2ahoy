@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Lalcs/a2ahoy/internal/auth"
+	"github.com/a2aproject/a2a-go/v2/a2a"
 )
 
 // v1CardJSON returns a minimal A2A spec v1.0 agent card JSON pointing at the
@@ -394,6 +395,244 @@ func TestResolveCard_WithBearerToken(t *testing.T) {
 
 	if got := captured.Get("Authorization"); got != "Bearer resolve-card-token" {
 		t.Errorf("Authorization: got %q, want %q", got, "Bearer resolve-card-token")
+	}
+}
+
+// TestApplyV1PathPrefix covers the workaround that compensates for the
+// upstream a2a-go REST transport bug: a2a-go omits the "/v1" prefix from
+// paths like /message:send, but Python a2a-sdk (the v0.3 reference
+// implementation) serves routes under /v1/*. The helper rewrites the URL
+// of HTTP+JSON v0.3 interfaces so the joined request URL hits /v1/...
+func TestApplyV1PathPrefix(t *testing.T) {
+	tests := []struct {
+		name  string
+		in    *a2a.AgentCard
+		check func(*testing.T, *a2a.AgentCard)
+	}{
+		{
+			name: "HTTP+JSON v0.3 with trailing slash gets /v1 appended",
+			in: &a2a.AgentCard{
+				SupportedInterfaces: []*a2a.AgentInterface{
+					{
+						URL:             "http://localhost:9999/",
+						ProtocolBinding: a2a.TransportProtocolHTTPJSON,
+						ProtocolVersion: "0.3.0",
+					},
+				},
+			},
+			check: func(t *testing.T, card *a2a.AgentCard) {
+				if got, want := card.SupportedInterfaces[0].URL, "http://localhost:9999/v1"; got != want {
+					t.Errorf("URL: got %q, want %q", got, want)
+				}
+			},
+		},
+		{
+			name: "HTTP+JSON v0.3 without trailing slash gets /v1 appended",
+			in: &a2a.AgentCard{
+				SupportedInterfaces: []*a2a.AgentInterface{
+					{
+						URL:             "http://localhost:9999",
+						ProtocolBinding: a2a.TransportProtocolHTTPJSON,
+						ProtocolVersion: "0.3.0",
+					},
+				},
+			},
+			check: func(t *testing.T, card *a2a.AgentCard) {
+				if got, want := card.SupportedInterfaces[0].URL, "http://localhost:9999/v1"; got != want {
+					t.Errorf("URL: got %q, want %q", got, want)
+				}
+			},
+		},
+		{
+			name: "HTTP+JSON v0.3 with URL already ending in /v1 is idempotent",
+			in: &a2a.AgentCard{
+				SupportedInterfaces: []*a2a.AgentInterface{
+					{
+						URL:             "http://localhost:9999/v1",
+						ProtocolBinding: a2a.TransportProtocolHTTPJSON,
+						ProtocolVersion: "0.3.0",
+					},
+				},
+			},
+			check: func(t *testing.T, card *a2a.AgentCard) {
+				if got, want := card.SupportedInterfaces[0].URL, "http://localhost:9999/v1"; got != want {
+					t.Errorf("URL: got %q, want %q (should be unchanged)", got, want)
+				}
+			},
+		},
+		{
+			name: "HTTP+JSON v0.3 with URL ending in /v1/ is idempotent",
+			in: &a2a.AgentCard{
+				SupportedInterfaces: []*a2a.AgentInterface{
+					{
+						URL:             "http://localhost:9999/v1/",
+						ProtocolBinding: a2a.TransportProtocolHTTPJSON,
+						ProtocolVersion: "0.3.0",
+					},
+				},
+			},
+			check: func(t *testing.T, card *a2a.AgentCard) {
+				if got, want := card.SupportedInterfaces[0].URL, "http://localhost:9999/v1/"; got != want {
+					t.Errorf("URL: got %q, want %q (should be unchanged)", got, want)
+				}
+			},
+		},
+		{
+			name: "HTTP+JSON v0.3 with short protocol version 0.3 matches",
+			in: &a2a.AgentCard{
+				SupportedInterfaces: []*a2a.AgentInterface{
+					{
+						URL:             "http://localhost:9999/",
+						ProtocolBinding: a2a.TransportProtocolHTTPJSON,
+						ProtocolVersion: "0.3",
+					},
+				},
+			},
+			check: func(t *testing.T, card *a2a.AgentCard) {
+				if got, want := card.SupportedInterfaces[0].URL, "http://localhost:9999/v1"; got != want {
+					t.Errorf("URL: got %q, want %q", got, want)
+				}
+			},
+		},
+		{
+			name: "JSONRPC transport is left untouched",
+			in: &a2a.AgentCard{
+				SupportedInterfaces: []*a2a.AgentInterface{
+					{
+						URL:             "http://localhost:9999/",
+						ProtocolBinding: a2a.TransportProtocolJSONRPC,
+						ProtocolVersion: "0.3.0",
+					},
+				},
+			},
+			check: func(t *testing.T, card *a2a.AgentCard) {
+				if got, want := card.SupportedInterfaces[0].URL, "http://localhost:9999/"; got != want {
+					t.Errorf("URL: got %q, want %q (JSONRPC should be unchanged)", got, want)
+				}
+			},
+		},
+		{
+			name: "HTTP+JSON v1.0 is left untouched",
+			in: &a2a.AgentCard{
+				SupportedInterfaces: []*a2a.AgentInterface{
+					{
+						URL:             "http://localhost:9999/",
+						ProtocolBinding: a2a.TransportProtocolHTTPJSON,
+						ProtocolVersion: "1.0",
+					},
+				},
+			},
+			check: func(t *testing.T, card *a2a.AgentCard) {
+				if got, want := card.SupportedInterfaces[0].URL, "http://localhost:9999/"; got != want {
+					t.Errorf("URL: got %q, want %q (v1.0 should be unchanged)", got, want)
+				}
+			},
+		},
+		{
+			name: "mixed interfaces: only HTTP+JSON v0.3 is rewritten",
+			in: &a2a.AgentCard{
+				SupportedInterfaces: []*a2a.AgentInterface{
+					{
+						URL:             "http://a/",
+						ProtocolBinding: a2a.TransportProtocolHTTPJSON,
+						ProtocolVersion: "0.3.0",
+					},
+					{
+						URL:             "http://b/",
+						ProtocolBinding: a2a.TransportProtocolJSONRPC,
+						ProtocolVersion: "0.3.0",
+					},
+					{
+						URL:             "http://c/",
+						ProtocolBinding: a2a.TransportProtocolHTTPJSON,
+						ProtocolVersion: "1.0",
+					},
+				},
+			},
+			check: func(t *testing.T, card *a2a.AgentCard) {
+				want := []string{"http://a/v1", "http://b/", "http://c/"}
+				for i, w := range want {
+					if got := card.SupportedInterfaces[i].URL; got != w {
+						t.Errorf("interface %d URL: got %q, want %q", i, got, w)
+					}
+				}
+			},
+		},
+		{
+			name: "nil card does not panic",
+			in:   nil,
+			check: func(t *testing.T, card *a2a.AgentCard) {
+				if card != nil {
+					t.Errorf("expected nil card, got %v", card)
+				}
+			},
+		},
+		{
+			name: "nil interface entry is skipped",
+			in: &a2a.AgentCard{
+				SupportedInterfaces: []*a2a.AgentInterface{
+					nil,
+					{
+						URL:             "http://localhost:9999/",
+						ProtocolBinding: a2a.TransportProtocolHTTPJSON,
+						ProtocolVersion: "0.3.0",
+					},
+				},
+			},
+			check: func(t *testing.T, card *a2a.AgentCard) {
+				if card.SupportedInterfaces[0] != nil {
+					t.Errorf("expected first interface to remain nil")
+				}
+				if got, want := card.SupportedInterfaces[1].URL, "http://localhost:9999/v1"; got != want {
+					t.Errorf("URL: got %q, want %q", got, want)
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			applyV1PathPrefix(tc.in)
+			tc.check(t, tc.in)
+		})
+	}
+}
+
+// TestNew_V03HTTPJSON_AppendsV1Prefix is an end-to-end regression test
+// for the /v1 path prefix workaround. It serves a v0.3 agent card whose
+// preferredTransport is "HTTP+JSON" and asserts that applyV1PathPrefix
+// rewrites the interface URL so subsequent REST calls resolve under /v1.
+func TestNew_V03HTTPJSON_AppendsV1Prefix(t *testing.T) {
+	ts := newCardServer(t, func(url string) string {
+		return fmt.Sprintf(`{
+			"name": "Test v0.3 HTTP+JSON Agent",
+			"description": "A v0.3 HTTP+JSON test agent",
+			"version": "1.0",
+			"protocolVersion": "0.3.0",
+			"url": %q,
+			"preferredTransport": "HTTP+JSON",
+			"capabilities": {},
+			"defaultInputModes": ["text/plain"],
+			"defaultOutputModes": ["text/plain"],
+			"skills": []
+		}`, url)
+	})
+	defer ts.Close()
+
+	ctx := context.Background()
+	a2aClient, card, err := New(ctx, Options{BaseURL: ts.URL})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer a2aClient.Destroy()
+
+	if len(card.SupportedInterfaces) == 0 {
+		t.Fatal("SupportedInterfaces must not be empty")
+	}
+	want := ts.URL + "/v1"
+	got := card.SupportedInterfaces[0].URL
+	if got != want {
+		t.Errorf("SupportedInterfaces[0].URL: got %q, want %q (workaround did not rewrite)", got, want)
 	}
 }
 

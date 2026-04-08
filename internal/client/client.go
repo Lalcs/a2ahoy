@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Lalcs/a2ahoy/internal/auth"
 	"github.com/Lalcs/a2ahoy/internal/vertexai"
@@ -60,6 +61,47 @@ func newVertexAI(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 	}
 
 	return vc, card, nil
+}
+
+// applyV1PathPrefix appends "/v1" to the URL of every HTTP+JSON transport
+// interface in the card that advertises A2A v0.3.
+//
+// Rationale: a2a-go v2 (as of v2.1.0) omits the "/v1" prefix from REST
+// paths like "/message:send" (see internal/rest/rest.go in that module),
+// but the A2A v0.3 spec and its reference implementation, Python a2a-sdk,
+// register REST routes under "/v1/*". Without this fix, a2ahoy commands
+// (send/stream/get/cancel) against Python a2a-sdk 0.3.x servers fail with
+// 404. This is a client-side workaround for the upstream bug.
+//
+// The fix is:
+//   - idempotent — skipped when the URL already ends in "/v1";
+//   - scoped — applies only to v0.3 HTTP+JSON interfaces, leaving
+//     JSON-RPC and v1.0 interfaces untouched;
+//   - safe for display — no caller of New currently displays
+//     SupportedInterfaces[].URL from the card it receives; the `card`
+//     subcommand uses ResolveCard, which does not invoke this function.
+func applyV1PathPrefix(card *a2a.AgentCard) {
+	if card == nil {
+		return
+	}
+	for _, iface := range card.SupportedInterfaces {
+		if iface == nil {
+			continue
+		}
+		if iface.ProtocolBinding != a2a.TransportProtocolHTTPJSON {
+			continue
+		}
+		// Match any 0.3.x version — the constant a2av0.Version is "0.3",
+		// but cards may carry "0.3.0", "0.3.1", etc.
+		if !strings.HasPrefix(string(iface.ProtocolVersion), "0.3") {
+			continue
+		}
+		trimmed := strings.TrimRight(iface.URL, "/")
+		if strings.HasSuffix(trimmed, "/v1") {
+			continue
+		}
+		iface.URL = trimmed + "/v1"
+	}
 }
 
 // parseOptionHeaders parses Options.Headers and wraps parse errors with the
@@ -179,6 +221,13 @@ func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to resolve agent card: %w", err)
 	}
+
+	// Workaround for upstream a2a-go bug: the v0.3 REST compat transport
+	// omits the "/v1" prefix from paths like /message:send, but the A2A
+	// v0.3 spec (and Python a2a-sdk, its reference implementation) serves
+	// routes under /v1/*. Without this, `send`/`stream`/`get`/`cancel`
+	// against Python a2a-sdk servers returns 404. See applyV1PathPrefix.
+	applyV1PathPrefix(card)
 
 	client, err := a2aclient.NewFromCard(ctx, card, clientOpts...)
 	if err != nil {
