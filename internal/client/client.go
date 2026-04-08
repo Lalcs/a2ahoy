@@ -77,31 +77,43 @@ func resolveVertexAICard(ctx context.Context, opts Options) (*vertexai.Client, *
 	return vc, card, nil
 }
 
-// applyV1PathPrefix appends "/v1" to the URL of every HTTP+JSON transport
-// interface in the card that advertises A2A v0.3.
+// applyV03RESTMountPrefix appends "/v1" to every HTTP+JSON transport
+// interface in the card that advertises A2A v0.3, so REST calls resolve
+// under the mount point convention used by the Python v0.3 ecosystem.
 //
-// Rationale: a2a-go v2 (as of v2.1.0) omits the "/v1" prefix from REST
-// paths like "/message:send" (see internal/rest/rest.go in that module),
-// but the A2A v0.3 spec and its reference implementation, Python a2a-sdk,
-// register REST routes under "/v1/*". Without this fix, a2ahoy commands
-// (send/stream/get/cancel) against Python a2a-sdk 0.3.x servers fail with
-// 404. This is a client-side workaround for the upstream bug.
+// Background: A2A v0.3 has an interpretation split around
+// AgentInterface.url. The v0.3 spec example (and the Python a2a-sdk
+// type definition mirroring it) reads "https://api.example.com/a2a/v1"
+// — URL-as-mountpoint. But the Python a2a-sdk REST client
+// implementation (client/transports/rest.py) treats URL as a bare base
+// and hardcodes "/v1" on top. As a result, canonical v0.3 peers (the
+// Python a2a-sdk reference server, Google ADK's to_a2a(), and Vertex AI
+// Agent Engine's non-Vertex route) publish cards whose HTTP+JSON URL
+// lacks "/v1" while their routes actually mount under "/v1/*".
 //
-// The fix is:
-//   - idempotent — skipped when the URL already ends in "/v1";
-//   - scoped — applies only to v0.3 HTTP+JSON interfaces, leaving
-//     JSON-RPC and v1.0 interfaces untouched;
-//   - safe for display — no caller of New currently displays
-//     SupportedInterfaces[].URL from the card it receives; the `card`
-//     subcommand uses ResolveCard, which does not invoke this function.
+// a2a-go v2 follows the v0.3 spec example literally and joins
+// "/message:send" directly onto iface.URL, which 404s against the
+// Python side. This function patches the card client-side to bridge
+// the gap, so send/stream/get/cancel succeed against v0.3 peers.
+// It is NOT a workaround for a bug in a2a-go — a2a-go is faithful to
+// the v0.3 spec example. The A2A v1.0 spec later removed "/v1" from
+// HTTP bindings, which can be read as the spec authors resolving this
+// interpretation split on the URL-as-bare-base side.
+//
+// Properties:
+//   - idempotent — URLs already ending in "/v1" are skipped;
+//   - scoped — only v0.3 HTTP+JSON interfaces are touched; JSON-RPC and
+//     v1.0 interfaces are left untouched;
+//   - display-safe — ResolveCard (used by the `card` subcommand)
+//     intentionally skips this rewrite so users see the raw URLs the
+//     server advertised.
 //
 // See also: internal/cardcheck.checkV03HTTPJSONMissingV1 is the display-
-// side counterpart that reports this condition as a warning without
-// mutating the card. The predicate (HTTP+JSON && protocol version starts
-// with "0.3" && URL does not end in "/v1") must stay in sync between the
-// two functions; tests in both packages enumerate the same matrix so
-// drift is caught in CI.
-func applyV1PathPrefix(card *a2a.AgentCard) {
+// side counterpart that reports the same condition without mutating the
+// card. The predicate (HTTP+JSON && protocol version starts with "0.3"
+// && URL does not end in "/v1") must stay in sync between the two
+// functions; mirrored test matrices in both packages catch drift in CI.
+func applyV03RESTMountPrefix(card *a2a.AgentCard) {
 	if card == nil {
 		return
 	}
@@ -170,22 +182,25 @@ func applyVertexAIHeaders(vc *vertexai.Client, headers []string) error {
 // newStandard creates a standard A2A client by resolving the agent card
 // and then building a client from it.
 //
-// applyV1PathPrefix is invoked here (not inside resolveStandardCard) so
-// that ResolveCard, which shares resolveStandardCard, does not rewrite
+// applyV03RESTMountPrefix is invoked here (not inside resolveStandardCard)
+// so that ResolveCard, which shares resolveStandardCard, does not rewrite
 // the card URLs — preserving the distinction that the `card` subcommand
-// displays raw URLs while send/stream/get/cancel use the workaround.
+// displays raw URLs while send/stream/get/cancel use the v0.3 REST mount
+// point compatibility rewrite.
 func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, error) {
 	card, clientOpts, err := resolveStandardCard(ctx, opts)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Workaround for upstream a2a-go bug: the v0.3 REST compat transport
-	// omits the "/v1" prefix from paths like /message:send, but the A2A
-	// v0.3 spec (and Python a2a-sdk, its reference implementation) serves
-	// routes under /v1/*. Without this, `send`/`stream`/`get`/`cancel`
-	// against Python a2a-sdk servers returns 404. See applyV1PathPrefix.
-	applyV1PathPrefix(card)
+	// Rewrite HTTP+JSON URLs in the card to the v0.3 REST mount point
+	// convention used by Python a2a-sdk (and ADK / Vertex AI Agent Engine
+	// non-Vertex peers that derive from it). a2a-go v2 follows the v0.3
+	// spec example literally and joins "/message:send" directly onto
+	// iface.URL, but those peers mount routes under /v1/*, so without
+	// this rewrite send/stream/get/cancel would 404. See
+	// applyV03RESTMountPrefix for the full rationale.
+	applyV03RESTMountPrefix(card)
 
 	client, err := a2aclient.NewFromCard(ctx, card, clientOpts...)
 	if err != nil {
@@ -198,7 +213,7 @@ func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 // caller's Options, runs the v0-compat agent-card resolver, and returns
 // both the parsed card and the clientOpts slice.
 //
-// Shared by newStandard (which also calls applyV1PathPrefix and
+// Shared by newStandard (which also calls applyV03RESTMountPrefix and
 // a2aclient.NewFromCard) and ResolveCard (which discards clientOpts
 // because it never constructs a long-lived client).
 //
@@ -293,7 +308,7 @@ func resolveStandardCard(ctx context.Context, opts Options) (*a2a.AgentCard, []a
 //
 // Card-resolution logic is shared with New via resolveVertexAICard and
 // resolveStandardCard; ResolveCard deliberately skips client construction
-// and the applyV1PathPrefix URL rewrite applied by newStandard.
+// and the applyV03RESTMountPrefix URL rewrite applied by newStandard.
 func ResolveCard(ctx context.Context, opts Options) (*a2a.AgentCard, error) {
 	if opts.VertexAI {
 		// resolveVertexAICard is shared with newVertexAI; the returned
@@ -307,9 +322,9 @@ func ResolveCard(ctx context.Context, opts Options) (*a2a.AgentCard, error) {
 
 	// resolveStandardCard is shared with newStandard; the returned
 	// clientOpts are discarded here because ResolveCard never constructs
-	// a long-lived A2A client. applyV1PathPrefix is also intentionally
-	// skipped so that the `card` subcommand displays raw URLs from the
-	// server rather than the workaround-rewritten URLs.
+	// a long-lived A2A client. applyV03RESTMountPrefix is also
+	// intentionally skipped so that the `card` subcommand displays raw
+	// URLs from the server rather than the compatibility-rewritten URLs.
 	card, _, err := resolveStandardCard(ctx, opts)
 	if err != nil {
 		return nil, err

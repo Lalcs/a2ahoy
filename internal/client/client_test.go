@@ -398,12 +398,15 @@ func TestResolveCard_WithBearerToken(t *testing.T) {
 	}
 }
 
-// TestApplyV1PathPrefix covers the workaround that compensates for the
-// upstream a2a-go REST transport bug: a2a-go omits the "/v1" prefix from
-// paths like /message:send, but Python a2a-sdk (the v0.3 reference
-// implementation) serves routes under /v1/*. The helper rewrites the URL
-// of HTTP+JSON v0.3 interfaces so the joined request URL hits /v1/...
-func TestApplyV1PathPrefix(t *testing.T) {
+// TestApplyV03RESTMountPrefix covers the v0.3 REST mount point
+// compatibility rewrite. Canonical v0.3 peers (Python a2a-sdk, ADK,
+// Vertex AI Agent Engine non-Vertex route) publish cards whose HTTP+JSON
+// URL lacks "/v1" but whose routes actually mount under "/v1/*", because
+// their REST clients hardcode "/v1" on top of the URL. a2a-go v2 instead
+// follows the v0.3 spec example literally and joins "/message:send"
+// directly onto iface.URL. The helper rewrites the URL of HTTP+JSON v0.3
+// interfaces so the joined request URL hits /v1/..., bridging the gap.
+func TestApplyV03RESTMountPrefix(t *testing.T) {
 	tests := []struct {
 		name  string
 		in    *a2a.AgentCard
@@ -592,16 +595,17 @@ func TestApplyV1PathPrefix(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			applyV1PathPrefix(tc.in)
+			applyV03RESTMountPrefix(tc.in)
 			tc.check(t, tc.in)
 		})
 	}
 }
 
 // TestNew_V03HTTPJSON_AppendsV1Prefix is an end-to-end regression test
-// for the /v1 path prefix workaround. It serves a v0.3 agent card whose
-// preferredTransport is "HTTP+JSON" and asserts that applyV1PathPrefix
-// rewrites the interface URL so subsequent REST calls resolve under /v1.
+// for the v0.3 REST mount point compatibility rewrite. It serves a v0.3
+// agent card whose preferredTransport is "HTTP+JSON" and asserts that
+// applyV03RESTMountPrefix rewrites the interface URL so subsequent REST
+// calls resolve under /v1.
 func TestNew_V03HTTPJSON_AppendsV1Prefix(t *testing.T) {
 	ts := newCardServer(t, func(url string) string {
 		return fmt.Sprintf(`{
@@ -632,7 +636,7 @@ func TestNew_V03HTTPJSON_AppendsV1Prefix(t *testing.T) {
 	want := ts.URL + "/v1"
 	got := card.SupportedInterfaces[0].URL
 	if got != want {
-		t.Errorf("SupportedInterfaces[0].URL: got %q, want %q (workaround did not rewrite)", got, want)
+		t.Errorf("SupportedInterfaces[0].URL: got %q, want %q (compatibility rewrite did not apply)", got, want)
 	}
 }
 

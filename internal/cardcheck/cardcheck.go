@@ -2,8 +2,9 @@
 //
 // The package inspects a resolved *a2a.AgentCard and returns a list of
 // Issues describing structural problems, specification violations, and
-// known compatibility gotchas (e.g., the a2a-go v0.3 HTTP+JSON "/v1"
-// path prefix bug compensated for by internal/client.applyV1PathPrefix).
+// known compatibility gotchas (e.g., the v0.3 HTTP+JSON "/v1" mount
+// point convention bridged by internal/client.applyV03RESTMountPrefix
+// for interop with Python a2a-sdk peers).
 //
 // cardcheck is a pure inspection layer: it has no dependency on networking,
 // authentication, presentation, or the rest of the a2ahoy application. It
@@ -38,8 +39,9 @@ const (
 	// a specific issue.
 	LevelInfo Level = iota
 	// LevelWarning indicates a likely problem that a2ahoy can still
-	// work around (e.g., v0.3 HTTP+JSON URL missing the "/v1" prefix
-	// is automatically rewritten by internal/client.applyV1PathPrefix).
+	// work around (e.g., v0.3 HTTP+JSON URL missing the "/v1" mount
+	// prefix is automatically rewritten by
+	// internal/client.applyV03RESTMountPrefix for Python a2a-sdk interop).
 	LevelWarning
 	// LevelError indicates a structural problem severe enough that
 	// downstream commands (send/stream/get/cancel) are expected to
@@ -470,17 +472,20 @@ func checkProtocolVersionRecognized(card *a2a.AgentCard) []Issue {
 // checkV03HTTPJSONMissingV1 reports a warning when an HTTP+JSON interface
 // advertises A2A v0.3 and the URL does not end with "/v1".
 //
-// Background: the a2a-go v2.1.0 REST compat transport omits the "/v1"
-// prefix from paths like /message:send, but the A2A v0.3 specification
-// (and its reference implementation, Python a2a-sdk) serves these routes
-// under /v1/*. Without the workaround in internal/client.applyV1PathPrefix
-// (see client.go), `send`/`stream`/`get`/`cancel` against such servers
-// fail with 404.
+// Background: A2A v0.3 has an interpretation split around
+// AgentInterface.url. Canonical v0.3 peers (Python a2a-sdk, Google ADK
+// to_a2a(), Vertex AI Agent Engine non-Vertex route) publish cards whose
+// HTTP+JSON URL lacks "/v1" but actually mount routes under "/v1/*",
+// because their REST clients hardcode "/v1" on top of the URL. a2a-go v2
+// instead follows the A2A v0.3 spec example literally and joins paths
+// directly onto iface.URL. Without the compatibility rewrite in
+// internal/client.applyV03RESTMountPrefix (see client.go),
+// `send`/`stream`/`get`/`cancel` against such peers 404.
 //
-// See also: internal/client/client.go applyV1PathPrefix — the live
-// mutation path used by `send` et al. The condition here must remain
-// identical to the one there. If one side changes, the other should
-// change too. The test suites are intentionally mirrored.
+// See also: internal/client/client.go applyV03RESTMountPrefix — the
+// live mutation path used by `send` et al. The condition here must
+// remain identical to the one there. If one side changes, the other
+// should change too. The test suites are intentionally mirrored.
 func checkV03HTTPJSONMissingV1(card *a2a.AgentCard) []Issue {
 	var out []Issue
 	for i, iface := range card.SupportedInterfaces {

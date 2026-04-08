@@ -303,9 +303,9 @@ func TestCheckInterfaces_NilEntrySkipped(t *testing.T) {
 	}
 }
 
-// TestCheckV03HTTPJSONMissingV1 mirrors TestApplyV1PathPrefix in
+// TestCheckV03HTTPJSONMissingV1 mirrors TestApplyV03RESTMountPrefix in
 // internal/client/client_test.go — the predicate in checkV03HTTPJSONMissingV1
-// and applyV1PathPrefix must stay in sync. Drift is detected by this test.
+// and applyV03RESTMountPrefix must stay in sync. Drift is detected by this test.
 func TestCheckV03HTTPJSONMissingV1(t *testing.T) {
 	tests := []struct {
 		name        string

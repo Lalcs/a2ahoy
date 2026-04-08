@@ -161,10 +161,15 @@ The v1.0 spec **drops the `/v1` prefix** — REST routes mount at the URL root:
 
 Source: `a2a-go/v2/internal/rest/rest.go:31-83`.
 
-> **Workaround in a2ahoy**: `internal/client/client.go:applyV1PathPrefix` automatically appends
-> `/v1` to HTTP+JSON interfaces in agent cards advertising `protocolVersion: 0.3.x`, so
-> a2ahoy can talk to Python a2a-sdk REST servers without manual configuration. The fix is
-> idempotent and only touches v0.3 HTTP+JSON interfaces.
+> **Compatibility rewrite in a2ahoy**: `internal/client/client.go:applyV03RESTMountPrefix`
+> automatically appends `/v1` to HTTP+JSON interfaces in agent cards advertising
+> `protocolVersion: 0.3.x`, so a2ahoy can talk to Python a2a-sdk REST servers (and the
+> ADK / Vertex AI Agent Engine non-Vertex peers that derive from them) without manual
+> configuration. This is *not* a workaround for an a2a-go bug — a2a-go is faithful to the
+> v0.3 spec example, which reads `AgentInterface.url` as a mount-point-including URL.
+> The rewrite bridges an interpretation split between the spec example and the Python REST
+> client implementation (which treats URL as a bare base and hardcodes `/v1`). The rewrite
+> is idempotent and only touches v0.3 HTTP+JSON interfaces.
 
 ### Streaming
 
@@ -286,11 +291,11 @@ you must use `a2a-go`'s `a2agrpc/v0` or `a2agrpc/v1` directly.
 | `a2a-go/v2/internal/jsonrpc/jsonrpc.go:33-44` | v1.0 JSON-RPC method name constants |
 | `a2a-go/v2/a2acompat/a2av0/jsonrpc.go:17-28` | v0.3 JSON-RPC method name constants |
 | `a2a-go/v2/internal/rest/rest.go:31-83` | v1.0 REST path builders (`MakeSendMessagePath`, etc.) |
-| `a2a-go/v2/a2acompat/a2av0/rest_server.go:53-63` | v0.3 REST handler (uses v1.0 paths internally — see workaround note) |
+| `a2a-go/v2/a2acompat/a2av0/rest_server.go:53-63` | v0.3 REST handler (joins paths directly onto `iface.URL` — see v0.3 REST mount point note above) |
 | `a2a-go/v2/a2apb/v1/a2a_grpc.pb.go:24-35` | v1.0 gRPC `lf.a2a.v1.A2AService` constants |
 | `a2a-go@v0.3.13/a2apb/a2a_grpc.pb.go:24-36` | v0.3 gRPC `a2a.v1.A2AService` constants |
 | `a2a-sdk/server/apps/rest/rest_adapter.py:208-250` | Python v0.3 REST routes (`/v1/...`) |
 | `a2a-sdk/server/apps/jsonrpc/starlette_app.py:100-153` | Python JSON-RPC mount (`POST /` + agent-card paths) |
 | `a2a-sdk/utils/constants.py:1-7` | Python well-known path constants |
-| `a2ahoy/internal/client/client.go:applyV1PathPrefix` | a2ahoy workaround for the v0.3 REST `/v1` prefix bug |
+| `a2ahoy/internal/client/client.go:applyV03RESTMountPrefix` | a2ahoy v0.3 REST mount point compatibility rewrite (Python a2a-sdk interop) |
 | `a2ahoy/internal/vertexai/endpoint.go` | Vertex AI base URL parsing and `/a2a/v1/...` path builders |
