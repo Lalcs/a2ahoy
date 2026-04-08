@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Lalcs/a2ahoy/internal/version"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -47,6 +48,17 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	// Wire the build-time version into Cobra so that `--version` works and
+	// the version string is visible at the top of `a2ahoy --help`. Long is
+	// rebuilt here (rather than overriding the template) so subcommand help
+	// output is unaffected — only the root command's help shows the version.
+	rootCmd.Version = version.Current()
+	rootCmd.SetVersionTemplate("a2ahoy version {{.Version}}\n")
+	rootCmd.Long = fmt.Sprintf(
+		"a2ahoy %s is a CLI tool for interacting with A2A (Agent-to-Agent) protocol agents.",
+		version.Current(),
+	)
+
 	rootCmd.PersistentFlags().BoolVar(&flagGCPAuth, "gcp-auth", false, "Enable GCP ADC authentication (ID token as Bearer)")
 	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output raw JSON")
 	rootCmd.PersistentFlags().BoolVar(&flagVertexAI, "vertex-ai", false, "Treat the URL as a Vertex AI Agent Engine endpoint")
