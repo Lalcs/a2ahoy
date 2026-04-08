@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 
@@ -65,6 +66,10 @@ type Model struct {
 	// UI components.
 	viewport  viewport.Model
 	textInput textinput.Model
+	// spinner animates while a streaming turn is in flight so the
+	// user can distinguish "request stuck" from "request waiting".
+	// Driven by spinner.TickMsg in Update; rendered in the status bar.
+	spinner spinner.Model
 
 	// Suggestion dropdown state.
 	showSuggestions bool
@@ -107,6 +112,11 @@ func newModel(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, base
 	vp.SoftWrap = true
 	vp.MouseWheelEnabled = true
 
+	// MiniDot is the smallest preset (single braille cell) so it sits
+	// flush in the status bar without shifting the surrounding text.
+	sp := spinner.New(spinner.WithSpinner(spinner.MiniDot))
+	sp.Style = spinnerStyle
+
 	return Model{
 		ctx:       ctx,
 		client:    c,
@@ -114,6 +124,7 @@ func newModel(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, base
 		baseURL:   baseURL,
 		viewport:  vp,
 		textInput: ti,
+		spinner:   sp,
 	}
 }
 
@@ -191,7 +202,8 @@ func (m *Model) updateViewportContent() {
 
 // updateSuggestions re-computes the dropdown contents based on the
 // current textinput value. Called after every key press that may
-// have mutated the input.
+// have mutated the input. Triggers a layout recalc so the viewport
+// makes room for (or reclaims space from) the dropdown.
 func (m *Model) updateSuggestions() {
 	val := m.textInput.Value()
 	// Show suggestions only while typing the command name itself;
@@ -208,6 +220,7 @@ func (m *Model) updateSuggestions() {
 		m.suggestions = nil
 		m.selectedSugg = 0
 	}
+	m.recalcLayout()
 }
 
 // acceptSuggestion replaces the textinput value with the currently
@@ -221,6 +234,7 @@ func (m *Model) acceptSuggestion() {
 	m.textInput.SetValue(m.suggestions[m.selectedSugg].Name + " ")
 	m.textInput.CursorEnd()
 	m.showSuggestions = false
+	m.recalcLayout()
 }
 
 // agentName returns the agent card name or a generic fallback, used

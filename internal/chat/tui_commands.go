@@ -42,9 +42,11 @@ func (m Model) dispatchSlash(sc SlashCmd) (tea.Model, tea.Cmd) {
 	case "":
 		// A bare "/" typed by itself.
 		m.errMsg = "enter a command name after / (try /help)"
+		m.recalcLayout()
 		return m, nil
 	default:
 		m.errMsg = fmt.Sprintf("unknown command: /%s (try /help)", sc.Name)
+		m.recalcLayout()
 		return m, nil
 	}
 }
@@ -85,6 +87,7 @@ func (m Model) handleGet(arg string) (tea.Model, tea.Cmd) {
 	targetID, err := m.state.ResolveTaskID(arg, "get")
 	if err != nil {
 		m.errMsg = err.Error()
+		m.recalcLayout()
 		return m, nil
 	}
 	ctx, c := m.ctx, m.client
@@ -101,6 +104,7 @@ func (m Model) handleCancel(arg string) (tea.Model, tea.Cmd) {
 	targetID, err := m.state.ResolveTaskID(arg, "cancel")
 	if err != nil {
 		m.errMsg = err.Error()
+		m.recalcLayout()
 		return m, nil
 	}
 	ctx, c := m.ctx, m.client

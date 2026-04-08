@@ -97,7 +97,7 @@ func (m Model) renderStatusBar() string {
 		parts = append(parts, fmt.Sprintf("ctx:%s", truncateID(id, 10)))
 	}
 	if m.streaming {
-		parts = append(parts, "⏳ streaming…")
+		parts = append(parts, m.spinner.View()+" streaming…")
 	}
 
 	// Keybinding hints always shown on the right.

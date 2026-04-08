@@ -2,6 +2,8 @@ package chat
 
 import (
 	tea "charm.land/bubbletea/v2"
+
+	"charm.land/bubbles/v2/spinner"
 )
 
 // Layout constants.
@@ -33,7 +35,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSlashResult(msg)
 	case errDisplayMsg:
 		m.errMsg = msg.msg
+		m.recalcLayout()
 		return m, nil
+	case spinner.TickMsg:
+		// While streaming, advance the spinner and let it self-schedule
+		// the next tick via the cmd it returns. Once streaming ends,
+		// drop the tick: the chain stops because we don't return a
+		// fresh cmd, and the spinner naturally stalls between turns.
+		if !m.streaming {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 	}
 
 	// Fall through: let the components process the message. This
@@ -55,17 +69,7 @@ func (m Model) handleResize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.height = msg.Height
 	m.ready = true
 
-	// Subtract the chrome from the total height to size the viewport.
-	chrome := headerHeight + inputHeight + statusBarHeight
-	if m.errMsg != "" {
-		chrome += errLineHeight
-	}
-	vh := msg.Height - chrome
-	if vh < 3 {
-		vh = 3
-	}
 	m.viewport.SetWidth(msg.Width)
-	m.viewport.SetHeight(vh)
 
 	// Input width accounts for the rounded border and horizontal
 	// padding (2 characters on each side).
@@ -75,9 +79,40 @@ func (m Model) handleResize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	}
 	m.textInput.SetWidth(iw)
 
-	// Re-render after resize so wrapping is up to date.
-	m.updateViewportContent()
+	// Compute viewport height from the current chrome (header + input
+	// + status + optional error line + optional dropdown). Centralised
+	// in recalcLayout so callers triggered by chrome-affecting state
+	// changes (suggestion toggle, errMsg update) can reuse the math.
+	m.recalcLayout()
 	return m, nil
+}
+
+// recalcLayout resizes the viewport based on the current chrome
+// height. Chrome includes the header, input, status bar, optional
+// error line, and — when visible — the suggestion dropdown.
+//
+// Call this whenever a state change may affect the chrome height
+// (resize, showSuggestions toggle, errMsg update). Safe to call
+// before the first WindowSizeMsg: returns early if !m.ready.
+func (m *Model) recalcLayout() {
+	if !m.ready {
+		return
+	}
+	chrome := headerHeight + inputHeight + statusBarHeight
+	if m.errMsg != "" {
+		chrome += errLineHeight
+	}
+	if m.showSuggestions && len(m.suggestions) > 0 {
+		// 1 line per suggestion + 2 for the top/bottom border that
+		// suggBoxStyle (NormalBorder) draws around the box.
+		chrome += len(m.suggestions) + 2
+	}
+	vh := m.height - chrome
+	if vh < 3 {
+		vh = 3
+	}
+	m.viewport.SetHeight(vh)
+	m.updateViewportContent()
 }
 
 // handleKey dispatches all key-press events. Slash-command
@@ -150,6 +185,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		if m.showSuggestions {
 			m.showSuggestions = false
+			m.recalcLayout()
 			return m, nil
 		}
 	}
@@ -157,6 +193,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Normal key event: let textinput process it, then reassess
 	// suggestion visibility based on the new value. The error line
 	// is cleared on any keystroke so stale errors don't linger.
+	// updateSuggestions calls recalcLayout, so the cleared errMsg
+	// (and the new dropdown state) are both reflected in one pass.
 	m.errMsg = ""
 	var cmd tea.Cmd
 	m.textInput, cmd = m.textInput.Update(msg)
@@ -175,6 +213,7 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 	// next turn starts with a clean slate.
 	m.textInput.SetValue("")
 	m.showSuggestions = false
+	m.recalcLayout()
 
 	if text == "" {
 		return m, nil

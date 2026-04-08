@@ -64,7 +64,11 @@ func (m Model) startStream(req *a2a.SendMessageRequest) (tea.Model, tea.Cmd) {
 	// close to fire the final streamEndMsg.
 	go streamPump(ctx, m.client, req, ch)
 
-	return m, waitForStreamEvent(ch)
+	// Kick the spinner alongside the first event wait. The spinner
+	// self-schedules its next tick from inside Update, so we only
+	// need to seed it once per stream. handleStreamEnd lets the chain
+	// terminate naturally by returning nil cmd on the next TickMsg.
+	return m, tea.Batch(waitForStreamEvent(ch), m.spinner.Tick)
 }
 
 // streamPump drains the SendStreamingMessage iterator into ch. It

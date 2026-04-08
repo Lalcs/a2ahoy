@@ -83,4 +83,11 @@ var (
 			Foreground(lipgloss.Color(colorAccent)).
 			Background(lipgloss.Color(colorStatusBg)).
 			Bold(true)
+
+	// spinnerStyle paints the streaming spinner in the accent colour
+	// against the status bar background so it sits flush with the
+	// surrounding text.
+	spinnerStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colorAccent)).
+			Background(lipgloss.Color(colorStatusBg))
 )
