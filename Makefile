@@ -2,6 +2,11 @@ APP_NAME := a2ahoy
 BUILD_DIR := build
 GO := go
 
+# Detect current install location via `which`; fall back to $(HOME)/.local/bin
+INSTALL_DIR ?= $(shell p=$$(which $(APP_NAME) 2>/dev/null); if [ -n "$$p" ]; then dirname "$$p"; else echo "$(HOME)/.local/bin"; fi)
+VERSION := $(shell git describe --tags --dirty --always 2>/dev/null || echo dev)
+LDFLAGS := -s -w -X github.com/Lalcs/a2ahoy/internal/version.Version=$(VERSION)
+
 .PHONY: all
 all: fmt vet test build ## Run fmt, vet, test, build
 
@@ -43,6 +48,14 @@ tidy: ## Tidy modules
 .PHONY: clean
 clean: ## Remove build artifacts
 	rm -rf $(BUILD_DIR)
+
+.PHONY: install
+install: ## Build with version info and install to $(INSTALL_DIR), replacing any existing binary
+	@mkdir -p $(BUILD_DIR)
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(APP_NAME) .
+	@mkdir -p $(INSTALL_DIR)
+	install -m 0755 $(BUILD_DIR)/$(APP_NAME) $(INSTALL_DIR)/$(APP_NAME)
+	@echo "Installed $(APP_NAME) $(VERSION) -> $(INSTALL_DIR)/$(APP_NAME)"
 
 .PHONY: run
 run: build ## Build and show help
