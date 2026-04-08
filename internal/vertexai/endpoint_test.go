@@ -86,39 +86,3 @@ func TestEndpoint_CardURL(t *testing.T) {
 		t.Errorf("CardURL:\n  got:  %s\n  want: %s", got, want)
 	}
 }
-
-func TestEndpoint_SendURL(t *testing.T) {
-	ep, _ := ParseEndpoint("https://us-central1-aiplatform.googleapis.com/v1beta1/projects/p/locations/l/reasoningEngines/123")
-	got := ep.SendURL()
-	want := "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/p/locations/l/reasoningEngines/123/a2a/v1/message:send"
-	if got != want {
-		t.Errorf("SendURL:\n  got:  %s\n  want: %s", got, want)
-	}
-}
-
-func TestEndpoint_StreamURL(t *testing.T) {
-	ep, _ := ParseEndpoint("https://us-central1-aiplatform.googleapis.com/v1beta1/projects/p/locations/l/reasoningEngines/123")
-	got := ep.StreamURL()
-	want := "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/p/locations/l/reasoningEngines/123/a2a/v1/message:stream"
-	if got != want {
-		t.Errorf("StreamURL:\n  got:  %s\n  want: %s", got, want)
-	}
-}
-
-func TestEndpoint_TaskURL(t *testing.T) {
-	ep, _ := ParseEndpoint("https://us-central1-aiplatform.googleapis.com/v1beta1/projects/p/locations/l/reasoningEngines/123")
-	got := ep.TaskURL("task-abc")
-	want := "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/p/locations/l/reasoningEngines/123/a2a/v1/tasks/task-abc"
-	if got != want {
-		t.Errorf("TaskURL:\n  got:  %s\n  want: %s", got, want)
-	}
-}
-
-func TestEndpoint_CancelTaskURL(t *testing.T) {
-	ep, _ := ParseEndpoint("https://us-central1-aiplatform.googleapis.com/v1beta1/projects/p/locations/l/reasoningEngines/123")
-	got := ep.CancelTaskURL("task-abc")
-	want := "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/p/locations/l/reasoningEngines/123/a2a/v1/tasks/task-abc:cancel"
-	if got != want {
-		t.Errorf("CancelTaskURL:\n  got:  %s\n  want: %s", got, want)
-	}
-}

@@ -51,26 +51,11 @@ func normalizeAPIVersion(path string) string {
 }
 
 // CardURL returns the URL for fetching the Agent Card.
+//
+// This is the only endpoint path a2ahoy constructs on the Vertex AI
+// client side. Every other request path (message:send, tasks/{id},
+// etc.) is built relative to the URL the agent card itself advertises
+// once FetchCard has been called.
 func (e *Endpoint) CardURL() string {
 	return e.base + "/a2a/v1/card"
-}
-
-// SendURL returns the URL for sending a message (blocking or non-blocking).
-func (e *Endpoint) SendURL() string {
-	return e.base + "/a2a/v1/message:send"
-}
-
-// StreamURL returns the URL for streaming a message via SSE.
-func (e *Endpoint) StreamURL() string {
-	return e.base + "/a2a/v1/message:stream"
-}
-
-// TaskURL returns the URL for retrieving a specific task by ID.
-func (e *Endpoint) TaskURL(taskID string) string {
-	return e.base + "/a2a/v1/tasks/" + url.PathEscape(taskID)
-}
-
-// CancelTaskURL returns the URL for cancelling a specific task.
-func (e *Endpoint) CancelTaskURL(taskID string) string {
-	return e.base + "/a2a/v1/tasks/" + url.PathEscape(taskID) + ":cancel"
 }

@@ -9,19 +9,28 @@ import (
 	"io"
 	"iter"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
+	"github.com/a2aproject/a2a-go/v2/a2acompat/a2av0"
 )
 
 // Client communicates with a Vertex AI Agent Engine A2A endpoint.
 // It translates between standard a2a.* types and the Vertex AI
 // Protobuf JSON wire format.
 type Client struct {
-	httpClient   *http.Client
-	endpoint     *Endpoint
+	httpClient *http.Client
+	endpoint   *Endpoint
+	// agentBaseURL is the base URL used to build all request paths
+	// (message:send, tasks/{id}, etc.). It is empty until FetchCard
+	// successfully populates it from SupportedInterfaces[0].URL.
+	// No "/v1" segment is ever prepended by a2ahoy code — the card
+	// is expected to declare a URL that already contains whatever
+	// version prefix its server exposes.
+	agentBaseURL string
 	getToken     func() (string, error)
 	extraHeaders []HeaderEntry
 }
@@ -55,6 +64,19 @@ func (c *Client) SetExtraHeaders(entries []HeaderEntry) {
 }
 
 // FetchCard retrieves the Agent Card from the Vertex AI A2A card endpoint.
+//
+// The response body is decoded with the a2av0 compat parser (a union parser
+// that accepts both A2A v1.0 and v0.3 card formats). This is required because
+// Vertex AI Agent Engine currently emits cards using v0.3-era root-level
+// fields (url, preferredTransport, protocolVersion, additionalInterfaces,
+// supportsAuthenticatedExtendedCard). A plain json.Unmarshal into the v1.0
+// a2a.AgentCard struct would silently drop those fields, leaving
+// SupportedInterfaces empty and Capabilities.ExtendedAgentCard false.
+//
+// On success, the card's first advertised interface URL overwrites the
+// client's agentBaseURL, so subsequent SendMessage/GetTask/CancelTask
+// calls route to the URL the server declared rather than the hard-coded
+// default derived from the endpoint.
 func (c *Client) FetchCard(ctx context.Context) (*a2a.AgentCard, error) {
 	req, err := c.newRequest(ctx, http.MethodGet, c.endpoint.CardURL(), nil)
 	if err != nil {
@@ -71,11 +93,41 @@ func (c *Client) FetchCard(ctx context.Context) (*a2a.AgentCard, error) {
 		return nil, readErrorResponse(resp)
 	}
 
-	var card a2a.AgentCard
-	if err := json.NewDecoder(resp.Body).Decode(&card); err != nil {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read agent card response: %w", err)
+	}
+
+	parser := a2av0.NewAgentCardParser()
+	card, err := parser(body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode agent card: %w", err)
 	}
-	return &card, nil
+
+	// Honor the URL the card advertises for subsequent requests.
+	if len(card.SupportedInterfaces) > 0 && card.SupportedInterfaces[0] != nil {
+		if u := strings.TrimRight(card.SupportedInterfaces[0].URL, "/"); u != "" {
+			c.agentBaseURL = u
+		}
+	}
+
+	return card, nil
+}
+
+func (c *Client) sendURL() string {
+	return c.agentBaseURL + "/message:send"
+}
+
+func (c *Client) streamURL() string {
+	return c.agentBaseURL + "/message:stream"
+}
+
+func (c *Client) taskURL(taskID string) string {
+	return c.agentBaseURL + "/tasks/" + url.PathEscape(taskID)
+}
+
+func (c *Client) cancelTaskURL(taskID string) string {
+	return c.agentBaseURL + "/tasks/" + url.PathEscape(taskID) + ":cancel"
 }
 
 // SendMessage sends a message to the Vertex AI A2A endpoint and returns
@@ -88,7 +140,7 @@ func (c *Client) SendMessage(ctx context.Context, a2aReq *a2a.SendMessageRequest
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := c.newRequest(ctx, http.MethodPost, c.endpoint.SendURL(), bytes.NewReader(body))
+	req, err := c.newRequest(ctx, http.MethodPost, c.sendURL(), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +177,7 @@ func (c *Client) SendStreamingMessage(ctx context.Context, a2aReq *a2a.SendMessa
 			return
 		}
 
-		req, err := c.newRequest(ctx, http.MethodPost, c.endpoint.StreamURL(), bytes.NewReader(body))
+		req, err := c.newRequest(ctx, http.MethodPost, c.streamURL(), bytes.NewReader(body))
 		if err != nil {
 			yield(nil, err)
 			return
@@ -214,7 +266,7 @@ func (c *Client) SendStreamingMessage(ctx context.Context, a2aReq *a2a.SendMessa
 // HistoryLength, when set on the request, is sent as a ?historyLength=N
 // query parameter (camelCase to match the rest of the Vertex AI wire format).
 func (c *Client) GetTask(ctx context.Context, a2aReq *a2a.GetTaskRequest) (*a2a.Task, error) {
-	taskURL := c.endpoint.TaskURL(string(a2aReq.ID))
+	taskURL := c.taskURL(string(a2aReq.ID))
 	if a2aReq.HistoryLength != nil {
 		taskURL += "?historyLength=" + strconv.Itoa(*a2aReq.HistoryLength)
 	}
@@ -243,7 +295,7 @@ func (c *Client) GetTask(ctx context.Context, a2aReq *a2a.GetTaskRequest) (*a2a.
 
 // CancelTask cancels a task by ID via the Vertex AI A2A endpoint.
 func (c *Client) CancelTask(ctx context.Context, a2aReq *a2a.CancelTaskRequest) (*a2a.Task, error) {
-	cancelURL := c.endpoint.CancelTaskURL(string(a2aReq.ID))
+	cancelURL := c.cancelTaskURL(string(a2aReq.ID))
 
 	req, err := c.newRequest(ctx, http.MethodPost, cancelURL, nil)
 	if err != nil {

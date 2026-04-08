@@ -19,6 +19,11 @@ func newTestClient(t *testing.T, handler http.Handler) (*Client, *httptest.Serve
 	c := NewClient(ep, func() (string, error) {
 		return "test-token", nil
 	})
+	// Preset agentBaseURL so tests that invoke SendMessage/GetTask/
+	// CancelTask/SendStreamingMessage directly (without going through
+	// FetchCard first) route to the test server's /a2a/v1/* routes.
+	// FetchCard-based tests overwrite this with the card's advertised URL.
+	c.agentBaseURL = server.URL + "/a2a/v1"
 	return c, server
 }
 
@@ -70,6 +75,265 @@ func TestClient_FetchCard_Error(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "404") {
 		t.Errorf("error should mention 404: %v", err)
+	}
+}
+
+// TestClient_FetchCard_V03Format verifies that the Vertex AI client correctly
+// decodes A2A v0.3-format agent cards. Vertex AI Agent Engine emits cards
+// with root-level url/preferredTransport/protocolVersion fields rather than
+// the v1.0 SupportedInterfaces array; the a2av0 compat parser promotes
+// these into a single-entry SupportedInterfaces[0] (verified here).
+func TestClient_FetchCard_V03Format(t *testing.T) {
+	const cardJSON = `{
+		"protocolVersion": "0.3.0",
+		"name": "v03-agent",
+		"description": "A v0.3 test agent",
+		"version": "1.0.0",
+		"url": "https://example.com/a2a",
+		"preferredTransport": "HTTP+JSON",
+		"capabilities": {"streaming": true},
+		"defaultInputModes": ["text/plain"],
+		"defaultOutputModes": ["application/json"],
+		"skills": []
+	}`
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, cardJSON)
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	got, err := c.FetchCard(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Name != "v03-agent" {
+		t.Errorf("name: got %q, want %q", got.Name, "v03-agent")
+	}
+	if len(got.SupportedInterfaces) != 1 {
+		t.Fatalf("SupportedInterfaces: got %d entries, want 1", len(got.SupportedInterfaces))
+	}
+	iface := got.SupportedInterfaces[0]
+	if iface.URL != "https://example.com/a2a" {
+		t.Errorf("interface URL: got %q, want %q", iface.URL, "https://example.com/a2a")
+	}
+	if iface.ProtocolBinding != a2a.TransportProtocolHTTPJSON {
+		t.Errorf("ProtocolBinding: got %q, want %q", iface.ProtocolBinding, a2a.TransportProtocolHTTPJSON)
+	}
+	if string(iface.ProtocolVersion) != "0.3.0" {
+		t.Errorf("ProtocolVersion: got %q, want %q", iface.ProtocolVersion, "0.3.0")
+	}
+	if !got.Capabilities.Streaming {
+		t.Error("Capabilities.Streaming: got false, want true")
+	}
+}
+
+// TestClient_FetchCard_V03WithAdditionalInterfaces verifies that v0.3
+// additionalInterfaces are expanded into SupportedInterfaces alongside the
+// root-level primary, skipping entries whose URL duplicates the primary.
+func TestClient_FetchCard_V03WithAdditionalInterfaces(t *testing.T) {
+	const cardJSON = `{
+		"protocolVersion": "0.3.0",
+		"name": "multi-transport",
+		"description": "Multi-transport v0.3 agent",
+		"version": "1.0.0",
+		"url": "https://example.com/a2a",
+		"preferredTransport": "JSONRPC",
+		"additionalInterfaces": [
+			{"url": "https://example.com/a2a", "transport": "JSONRPC"},
+			{"url": "https://example.com/rest", "transport": "HTTP+JSON"}
+		],
+		"capabilities": {},
+		"defaultInputModes": ["text/plain"],
+		"defaultOutputModes": ["text/plain"],
+		"skills": []
+	}`
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, cardJSON)
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	got, err := c.FetchCard(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Primary (JSONRPC at /a2a) + rest (HTTP+JSON) = 2 entries.
+	// The additionalInterfaces entry with URL https://example.com/a2a is a
+	// duplicate of the primary URL and must be skipped by the compat parser.
+	if len(got.SupportedInterfaces) != 2 {
+		t.Fatalf("SupportedInterfaces: got %d entries, want 2", len(got.SupportedInterfaces))
+	}
+	if got.SupportedInterfaces[0].ProtocolBinding != a2a.TransportProtocolJSONRPC {
+		t.Errorf("interfaces[0] binding: got %q, want JSONRPC", got.SupportedInterfaces[0].ProtocolBinding)
+	}
+	if got.SupportedInterfaces[1].URL != "https://example.com/rest" {
+		t.Errorf("interfaces[1] URL: got %q, want https://example.com/rest", got.SupportedInterfaces[1].URL)
+	}
+	if got.SupportedInterfaces[1].ProtocolBinding != a2a.TransportProtocolHTTPJSON {
+		t.Errorf("interfaces[1] binding: got %q, want HTTP+JSON", got.SupportedInterfaces[1].ProtocolBinding)
+	}
+}
+
+// TestClient_FetchCard_V03SupportsExtendedCard verifies that the v0.3
+// root-level supportsAuthenticatedExtendedCard field is promoted into
+// Capabilities.ExtendedAgentCard by the compat parser.
+func TestClient_FetchCard_V03SupportsExtendedCard(t *testing.T) {
+	const cardJSON = `{
+		"protocolVersion": "0.3.0",
+		"name": "extended-card-agent",
+		"description": "Agent with extended card",
+		"version": "1.0.0",
+		"url": "https://example.com/a2a",
+		"preferredTransport": "HTTP+JSON",
+		"supportsAuthenticatedExtendedCard": true,
+		"capabilities": {"streaming": false},
+		"defaultInputModes": ["text/plain"],
+		"defaultOutputModes": ["text/plain"],
+		"skills": []
+	}`
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, cardJSON)
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	got, err := c.FetchCard(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !got.Capabilities.ExtendedAgentCard {
+		t.Error("Capabilities.ExtendedAgentCard: got false, want true (promoted from supportsAuthenticatedExtendedCard)")
+	}
+}
+
+// TestClient_FetchCard_UpdatesAgentBaseURL verifies that FetchCard rewrites
+// the client's agentBaseURL to the value the card advertises in
+// SupportedInterfaces[0].URL. Subsequent SendMessage/GetTask/CancelTask
+// calls will then route to that URL rather than the default derived from
+// the endpoint.
+func TestClient_FetchCard_UpdatesAgentBaseURL(t *testing.T) {
+	const cardJSON = `{
+		"protocolVersion": "0.3.0",
+		"name": "base-url-test",
+		"description": "test",
+		"version": "1.0.0",
+		"url": "https://agent.example.com/custom/path",
+		"preferredTransport": "HTTP+JSON",
+		"capabilities": {},
+		"defaultInputModes": ["text/plain"],
+		"defaultOutputModes": ["text/plain"],
+		"skills": []
+	}`
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, cardJSON)
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	// Sanity check: agentBaseURL must differ from the target before
+	// FetchCard runs, otherwise the assertion below is vacuous.
+	const wantURL = "https://agent.example.com/custom/path"
+	if c.agentBaseURL == wantURL {
+		t.Fatalf("agentBaseURL already equals target URL before FetchCard")
+	}
+
+	_, err := c.FetchCard(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if c.agentBaseURL != wantURL {
+		t.Errorf("agentBaseURL after FetchCard: got %q, want %q", c.agentBaseURL, wantURL)
+	}
+}
+
+// TestClient_FetchCard_VertexAIFixture is a regression test using the exact
+// JSON shape observed from a real Vertex AI Agent Engine (fund_researcher).
+// Before A2AHOY-26 the root-level url/preferredTransport/protocolVersion
+// and supportsAuthenticatedExtendedCard fields were silently dropped by a
+// plain json.Unmarshal into a2a.AgentCard.
+func TestClient_FetchCard_VertexAIFixture(t *testing.T) {
+	const cardJSON = `{
+		"protocolVersion": "0.3.0",
+		"version": "1.0.0",
+		"skills": [
+			{
+				"tags": ["Finance", "Fund", "Research"],
+				"description": "投資信託の基準価額やリターン率をWebから検索・取得する",
+				"name": "投資信託リサーチ",
+				"id": "research_fund"
+			}
+		],
+		"supportsAuthenticatedExtendedCard": true,
+		"name": "fund-researcher",
+		"capabilities": {"streaming": true},
+		"url": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/338393595527/locations/us-central1/reasoningEngines/5063154838641049600/a2a",
+		"description": "投資信託リサーチ AI エージェント",
+		"preferredTransport": "HTTP+JSON",
+		"defaultOutputModes": ["application/json"],
+		"defaultInputModes": ["text/plain"]
+	}`
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, cardJSON)
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	got, err := c.FetchCard(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got.Name != "fund-researcher" {
+		t.Errorf("Name: got %q, want fund-researcher", got.Name)
+	}
+	if len(got.SupportedInterfaces) != 1 {
+		t.Fatalf("SupportedInterfaces: got %d, want 1", len(got.SupportedInterfaces))
+	}
+	const wantURL = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/338393595527/locations/us-central1/reasoningEngines/5063154838641049600/a2a"
+	iface := got.SupportedInterfaces[0]
+	if iface.URL != wantURL {
+		t.Errorf("interface URL: got %q, want %q", iface.URL, wantURL)
+	}
+	if iface.ProtocolBinding != a2a.TransportProtocolHTTPJSON {
+		t.Errorf("ProtocolBinding: got %q, want HTTP+JSON", iface.ProtocolBinding)
+	}
+	if string(iface.ProtocolVersion) != "0.3.0" {
+		t.Errorf("ProtocolVersion: got %q, want 0.3.0", iface.ProtocolVersion)
+	}
+	if !got.Capabilities.Streaming {
+		t.Error("Capabilities.Streaming: got false, want true")
+	}
+	if !got.Capabilities.ExtendedAgentCard {
+		t.Error("Capabilities.ExtendedAgentCard: got false, want true (from supportsAuthenticatedExtendedCard)")
+	}
+	if len(got.Skills) != 1 || got.Skills[0].ID != "research_fund" {
+		t.Errorf("Skills: got %+v", got.Skills)
+	}
+
+	// agentBaseURL should be updated to the card URL.
+	if c.agentBaseURL != wantURL {
+		t.Errorf("agentBaseURL: got %q, want %q", c.agentBaseURL, wantURL)
 	}
 }
 
