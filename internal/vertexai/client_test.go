@@ -19,11 +19,15 @@ func newTestClient(t *testing.T, handler http.Handler) (*Client, *httptest.Serve
 	c := NewClient(ep, func() (string, error) {
 		return "test-token", nil
 	})
-	// Preset agentBaseURL so tests that invoke SendMessage/GetTask/
+	// Preset the card so tests that invoke SendMessage/GetTask/
 	// CancelTask/SendStreamingMessage directly (without going through
 	// FetchCard first) route to the test server's /a2a/v1/* routes.
-	// FetchCard-based tests overwrite this with the card's advertised URL.
-	c.agentBaseURL = server.URL + "/a2a/v1"
+	// FetchCard-based tests overwrite c.card with the server response.
+	c.card = &a2a.AgentCard{
+		SupportedInterfaces: []*a2a.AgentInterface{
+			{URL: server.URL + "/a2a/v1"},
+		},
+	}
 	return c, server
 }
 
@@ -218,12 +222,12 @@ func TestClient_FetchCard_V03SupportsExtendedCard(t *testing.T) {
 	}
 }
 
-// TestClient_FetchCard_UpdatesAgentBaseURL verifies that FetchCard rewrites
-// the client's agentBaseURL to the value the card advertises in
-// SupportedInterfaces[0].URL. Subsequent SendMessage/GetTask/CancelTask
-// calls will then route to that URL rather than the default derived from
-// the endpoint.
-func TestClient_FetchCard_UpdatesAgentBaseURL(t *testing.T) {
+// TestClient_FetchCard_UpdatesBaseURL verifies that FetchCard stores the
+// parsed card on the client so that baseURL() returns the URL the server
+// advertised in SupportedInterfaces[0].URL. Subsequent SendMessage/GetTask/
+// CancelTask calls will then route to that URL rather than the preset
+// fixture URL from newTestClient.
+func TestClient_FetchCard_UpdatesBaseURL(t *testing.T) {
 	const cardJSON = `{
 		"protocolVersion": "0.3.0",
 		"name": "base-url-test",
@@ -246,11 +250,11 @@ func TestClient_FetchCard_UpdatesAgentBaseURL(t *testing.T) {
 	c, server := newTestClient(t, mux)
 	defer server.Close()
 
-	// Sanity check: agentBaseURL must differ from the target before
+	// Sanity check: baseURL() must differ from the target before
 	// FetchCard runs, otherwise the assertion below is vacuous.
 	const wantURL = "https://agent.example.com/custom/path"
-	if c.agentBaseURL == wantURL {
-		t.Fatalf("agentBaseURL already equals target URL before FetchCard")
+	if c.baseURL() == wantURL {
+		t.Fatalf("baseURL already equals target URL before FetchCard")
 	}
 
 	_, err := c.FetchCard(context.Background())
@@ -258,8 +262,8 @@ func TestClient_FetchCard_UpdatesAgentBaseURL(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if c.agentBaseURL != wantURL {
-		t.Errorf("agentBaseURL after FetchCard: got %q, want %q", c.agentBaseURL, wantURL)
+	if c.baseURL() != wantURL {
+		t.Errorf("baseURL after FetchCard: got %q, want %q", c.baseURL(), wantURL)
 	}
 }
 
@@ -331,9 +335,94 @@ func TestClient_FetchCard_VertexAIFixture(t *testing.T) {
 		t.Errorf("Skills: got %+v", got.Skills)
 	}
 
-	// agentBaseURL should be updated to the card URL.
-	if c.agentBaseURL != wantURL {
-		t.Errorf("agentBaseURL: got %q, want %q", c.agentBaseURL, wantURL)
+	// baseURL() should derive the card URL.
+	if c.baseURL() != wantURL {
+		t.Errorf("baseURL: got %q, want %q", c.baseURL(), wantURL)
+	}
+}
+
+// TestClient_BaseURL_NilSafe verifies that baseURL() returns "" without
+// panicking for nil card / empty interfaces / nil first interface — the
+// states the client is in before FetchCard runs or when a card response
+// lacks any usable transport. URL builders propagate "" so the resulting
+// request fails fast with an obvious error instead of hitting a stale URL.
+func TestClient_BaseURL_NilSafe(t *testing.T) {
+	tests := []struct {
+		name string
+		card *a2a.AgentCard
+	}{
+		{name: "nil card", card: nil},
+		{name: "empty SupportedInterfaces", card: &a2a.AgentCard{}},
+		{
+			name: "nil first interface",
+			card: &a2a.AgentCard{
+				SupportedInterfaces: []*a2a.AgentInterface{nil},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Client{card: tc.card}
+			if got := c.baseURL(); got != "" {
+				t.Errorf("baseURL: got %q, want empty", got)
+			}
+		})
+	}
+}
+
+// TestClient_CardMutationReflectedInRequestURLs is the regression guard
+// for the "store card reference, derive URLs on demand" design used by
+// internal/client.New to apply applyV03RESTMountPrefix to Vertex AI
+// endpoints. Mutating the stored card must immediately affect subsequent
+// sendURL()/streamURL()/taskURL()/cancelTaskURL() outputs; a future
+// refactor that reintroduces a cached URL field would break this and be
+// caught here.
+func TestClient_CardMutationReflectedInRequestURLs(t *testing.T) {
+	const cardJSON = `{
+		"protocolVersion": "0.3.0",
+		"name": "fund-researcher",
+		"description": "test",
+		"version": "1.0.0",
+		"url": "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1/locations/us-central1/reasoningEngines/1/a2a",
+		"preferredTransport": "HTTP+JSON",
+		"capabilities": {},
+		"defaultInputModes": ["text/plain"],
+		"defaultOutputModes": ["text/plain"],
+		"skills": []
+	}`
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, cardJSON)
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	card, err := c.FetchCard(context.Background())
+	if err != nil {
+		t.Fatalf("FetchCard: %v", err)
+	}
+
+	const preRewriteURL = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/1/locations/us-central1/reasoningEngines/1/a2a"
+	if c.baseURL() != preRewriteURL {
+		t.Fatalf("baseURL after FetchCard: got %q, want %q", c.baseURL(), preRewriteURL)
+	}
+
+	// Simulate applyV03RESTMountPrefix rewriting the card URL in place.
+	// internal/client.TestApplyV03RESTMountPrefix covers the rewrite rule;
+	// this test covers the propagation to request URLs.
+	const postRewriteURL = preRewriteURL + "/v1"
+	card.SupportedInterfaces[0].URL = postRewriteURL
+
+	if c.baseURL() != postRewriteURL {
+		t.Errorf("baseURL after mutation: got %q, want %q", c.baseURL(), postRewriteURL)
+	}
+	wantSendURL := postRewriteURL + "/message:send"
+	if got := c.sendURL(); got != wantSendURL {
+		t.Errorf("sendURL() after mutation: got %q, want %q", got, wantSendURL)
 	}
 }
 

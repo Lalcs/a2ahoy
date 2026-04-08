@@ -18,6 +18,13 @@ type Options struct {
 	BaseURL  string
 	GCPAuth  bool
 	VertexAI bool
+	// V03RESTMount, when true, rewrites HTTP+JSON v0.3 interface URLs to
+	// the "/v1" mount-point convention used by the Python a2a-sdk REST
+	// client, Google ADK, and Vertex AI Agent Engine's non-Vertex route.
+	// Disabled by default so native a2a-go v2 spec-compliant servers are
+	// addressed as-is. Applies to both standard and Vertex AI code paths.
+	// See applyV03RESTMountPrefix for the full rationale.
+	V03RESTMount bool
 	// Headers holds raw "KEY=VALUE" strings from the --header flag;
 	// parsed inside New and ResolveCard via auth.ParseHeaders.
 	Headers []string
@@ -38,6 +45,15 @@ func New(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, error) {
 		vc, card, err := resolveVertexAICard(ctx, opts)
 		if err != nil {
 			return nil, nil, err
+		}
+		// vertexai.Client stores the card by reference and derives each
+		// request URL from it on demand, so the in-place rewrite below
+		// is automatically picked up by subsequent SendMessage/GetTask/
+		// CancelTask calls. Done here (not inside resolveVertexAICard)
+		// so ResolveCard — which shares that helper for the `card`
+		// subcommand — continues to surface the raw URLs.
+		if opts.V03RESTMount {
+			applyV03RESTMountPrefix(card)
 		}
 		return vc, card, nil
 	}
@@ -77,9 +93,15 @@ func resolveVertexAICard(ctx context.Context, opts Options) (*vertexai.Client, *
 	return vc, card, nil
 }
 
-// applyV03RESTMountPrefix appends "/v1" to every HTTP+JSON transport
-// interface in the card that advertises A2A v0.3, so REST calls resolve
-// under the mount point convention used by the Python v0.3 ecosystem.
+// v03RESTMountSuffix is the path segment Python a2a-sdk / Google ADK /
+// Vertex AI Agent Engine non-Vertex routes mount v0.3 HTTP+JSON endpoints
+// under. applyV03RESTMountPrefix appends this to advertised URLs when
+// the caller opts in via Options.V03RESTMount.
+const v03RESTMountSuffix = "/v1"
+
+// applyV03RESTMountPrefix appends v03RESTMountSuffix to every HTTP+JSON
+// transport interface in the card that advertises A2A v0.3, so REST calls
+// resolve under the mount point convention used by the Python v0.3 ecosystem.
 //
 // Background: A2A v0.3 has an interpretation split around
 // AgentInterface.url. The v0.3 spec example (and the Python a2a-sdk
@@ -130,10 +152,10 @@ func applyV03RESTMountPrefix(card *a2a.AgentCard) {
 			continue
 		}
 		trimmed := strings.TrimRight(iface.URL, "/")
-		if strings.HasSuffix(trimmed, "/v1") {
+		if strings.HasSuffix(trimmed, v03RESTMountSuffix) {
 			continue
 		}
-		iface.URL = trimmed + "/v1"
+		iface.URL = trimmed + v03RESTMountSuffix
 	}
 }
 
@@ -180,27 +202,21 @@ func applyVertexAIHeaders(vc *vertexai.Client, headers []string) error {
 }
 
 // newStandard creates a standard A2A client by resolving the agent card
-// and then building a client from it.
-//
-// applyV03RESTMountPrefix is invoked here (not inside resolveStandardCard)
-// so that ResolveCard, which shares resolveStandardCard, does not rewrite
-// the card URLs — preserving the distinction that the `card` subcommand
-// displays raw URLs while send/stream/get/cancel use the v0.3 REST mount
-// point compatibility rewrite.
+// and then building a client from it. The v0.3 REST mount-point rewrite
+// is applied here (and not inside resolveStandardCard) so ResolveCard,
+// which shares that helper, can keep surfacing raw URLs for the `card`
+// subcommand while send/stream/get/cancel opt into the compatibility
+// rewrite via Options.V03RESTMount.
 func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, error) {
 	card, clientOpts, err := resolveStandardCard(ctx, opts)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Rewrite HTTP+JSON URLs in the card to the v0.3 REST mount point
-	// convention used by Python a2a-sdk (and ADK / Vertex AI Agent Engine
-	// non-Vertex peers that derive from it). a2a-go v2 follows the v0.3
-	// spec example literally and joins "/message:send" directly onto
-	// iface.URL, but those peers mount routes under /v1/*, so without
-	// this rewrite send/stream/get/cancel would 404. See
-	// applyV03RESTMountPrefix for the full rationale.
-	applyV03RESTMountPrefix(card)
+	// See applyV03RESTMountPrefix for the rationale.
+	if opts.V03RESTMount {
+		applyV03RESTMountPrefix(card)
+	}
 
 	client, err := a2aclient.NewFromCard(ctx, card, clientOpts...)
 	if err != nil {

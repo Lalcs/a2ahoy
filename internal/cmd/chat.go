@@ -48,11 +48,12 @@ func runChat(cmd *cobra.Command, args []string) error {
 	baseURL := args[0]
 
 	a2aClient, card, err := client.New(ctx, client.Options{
-		BaseURL:     baseURL,
-		GCPAuth:     flagGCPAuth,
-		VertexAI:    flagVertexAI,
-		Headers:     flagHeaders,
-		BearerToken: flagBearerToken,
+		BaseURL:      baseURL,
+		GCPAuth:      flagGCPAuth,
+		VertexAI:     flagVertexAI,
+		V03RESTMount: flagV03RESTMount,
+		Headers:      flagHeaders,
+		BearerToken:  flagBearerToken,
 	})
 	if err != nil {
 		return err

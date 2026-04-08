@@ -14,12 +14,13 @@ import (
 const bearerTokenEnvVar = "A2A_BEARER_TOKEN"
 
 var (
-	flagGCPAuth     bool
-	flagJSON        bool
-	flagVertexAI    bool
-	flagNoColor     bool
-	flagHeaders     []string
-	flagBearerToken string
+	flagGCPAuth      bool
+	flagJSON         bool
+	flagVertexAI     bool
+	flagV03RESTMount bool
+	flagNoColor      bool
+	flagHeaders      []string
+	flagBearerToken  string
 )
 
 var rootCmd = &cobra.Command{
@@ -62,6 +63,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagGCPAuth, "gcp-auth", false, "Enable GCP ADC authentication (ID token as Bearer)")
 	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output raw JSON")
 	rootCmd.PersistentFlags().BoolVar(&flagVertexAI, "vertex-ai", false, "Treat the URL as a Vertex AI Agent Engine endpoint")
+	rootCmd.PersistentFlags().BoolVar(&flagV03RESTMount, "v03-rest-mount", false, "Apply A2A v0.3 REST /v1 mount-point prefix workaround (for Python a2a-sdk / ADK / Vertex AI servers)")
 	rootCmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable colored output")
 	// StringArrayVar (not StringSliceVar) so values with commas are not split,
 	// e.g. --header "Accept=application/json, text/plain".

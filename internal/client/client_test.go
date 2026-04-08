@@ -601,13 +601,23 @@ func TestApplyV03RESTMountPrefix(t *testing.T) {
 	}
 }
 
-// TestNew_V03HTTPJSON_AppendsV1Prefix is an end-to-end regression test
-// for the v0.3 REST mount point compatibility rewrite. It serves a v0.3
-// agent card whose preferredTransport is "HTTP+JSON" and asserts that
-// applyV03RESTMountPrefix rewrites the interface URL so subsequent REST
-// calls resolve under /v1.
-func TestNew_V03HTTPJSON_AppendsV1Prefix(t *testing.T) {
-	ts := newCardServer(t, func(url string) string {
+// TestNew_V03HTTPJSON_V03RESTMountGating is an end-to-end regression test
+// for the opt-in v0.3 REST mount point compatibility rewrite. It serves a
+// v0.3 agent card whose preferredTransport is "HTTP+JSON" and asserts that:
+//
+//   - with Options.V03RESTMount == false (default), the URL is preserved
+//     as-is so native a2a-go v2 spec-compliant peers are addressed as
+//     the server advertised them;
+//   - with Options.V03RESTMount == true, applyV03RESTMountPrefix rewrites
+//     the interface URL so subsequent REST calls resolve under /v1 — the
+//     workaround required by Python a2a-sdk / ADK / Vertex AI non-Vertex
+//     route peers.
+//
+// The two cases share the card fixture so any drift in the server's
+// preferredTransport / protocolVersion combination is caught by both at
+// once.
+func TestNew_V03HTTPJSON_V03RESTMountGating(t *testing.T) {
+	cardBody := func(url string) string {
 		return fmt.Sprintf(`{
 			"name": "Test v0.3 HTTP+JSON Agent",
 			"description": "A v0.3 HTTP+JSON test agent",
@@ -620,23 +630,52 @@ func TestNew_V03HTTPJSON_AppendsV1Prefix(t *testing.T) {
 			"defaultOutputModes": ["text/plain"],
 			"skills": []
 		}`, url)
-	})
+	}
+
+	// One server covers both subtests: cardBody is stateless and each
+	// run reads the card independently, so there is no cross-test
+	// interference from sharing the underlying httptest.Server.
+	ts := newCardServer(t, cardBody)
 	defer ts.Close()
 
-	ctx := context.Background()
-	a2aClient, card, err := New(ctx, Options{BaseURL: ts.URL})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	tests := []struct {
+		name         string
+		v03RESTMount bool
+		wantSuffix   string
+	}{
+		{
+			name:         "default (opt-out) preserves raw URL",
+			v03RESTMount: false,
+			wantSuffix:   "", // == ts.URL, no /v1 suffix
+		},
+		{
+			name:         "opt-in appends /v1 for v0.3 HTTP+JSON",
+			v03RESTMount: true,
+			wantSuffix:   "/v1",
+		},
 	}
-	defer a2aClient.Destroy()
 
-	if len(card.SupportedInterfaces) == 0 {
-		t.Fatal("SupportedInterfaces must not be empty")
-	}
-	want := ts.URL + "/v1"
-	got := card.SupportedInterfaces[0].URL
-	if got != want {
-		t.Errorf("SupportedInterfaces[0].URL: got %q, want %q (compatibility rewrite did not apply)", got, want)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			a2aClient, card, err := New(ctx, Options{
+				BaseURL:      ts.URL,
+				V03RESTMount: tc.v03RESTMount,
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			defer a2aClient.Destroy()
+
+			if len(card.SupportedInterfaces) == 0 {
+				t.Fatal("SupportedInterfaces must not be empty")
+			}
+			want := ts.URL + tc.wantSuffix
+			got := card.SupportedInterfaces[0].URL
+			if got != want {
+				t.Errorf("SupportedInterfaces[0].URL: got %q, want %q", got, want)
+			}
+		})
 	}
 }
 

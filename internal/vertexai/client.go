@@ -24,13 +24,13 @@ import (
 type Client struct {
 	httpClient *http.Client
 	endpoint   *Endpoint
-	// agentBaseURL is the base URL used to build all request paths
-	// (message:send, tasks/{id}, etc.). It is empty until FetchCard
-	// successfully populates it from SupportedInterfaces[0].URL.
-	// No "/v1" segment is ever prepended by a2ahoy code — the card
-	// is expected to declare a URL that already contains whatever
-	// version prefix its server exposes.
-	agentBaseURL string
+	// card is populated by FetchCard and read by the URL builders
+	// (sendURL, streamURL, taskURL, cancelTaskURL) via baseURL().
+	// Storing the card directly — rather than a derived string —
+	// means mutations by callers (e.g. applyV03RESTMountPrefix in
+	// internal/client) are automatically reflected on subsequent
+	// requests without a separate invalidation step.
+	card         *a2a.AgentCard
 	getToken     func() (string, error)
 	extraHeaders []HeaderEntry
 }
@@ -73,10 +73,9 @@ func (c *Client) SetExtraHeaders(entries []HeaderEntry) {
 // a2a.AgentCard struct would silently drop those fields, leaving
 // SupportedInterfaces empty and Capabilities.ExtendedAgentCard false.
 //
-// On success, the card's first advertised interface URL overwrites the
-// client's agentBaseURL, so subsequent SendMessage/GetTask/CancelTask
-// calls route to the URL the server declared rather than the hard-coded
-// default derived from the endpoint.
+// On success, the parsed card is stored on the client so subsequent
+// SendMessage/GetTask/CancelTask calls derive their request URLs from
+// the card's first advertised interface via baseURL().
 func (c *Client) FetchCard(ctx context.Context) (*a2a.AgentCard, error) {
 	req, err := c.newRequest(ctx, http.MethodGet, c.endpoint.CardURL(), nil)
 	if err != nil {
@@ -104,30 +103,35 @@ func (c *Client) FetchCard(ctx context.Context) (*a2a.AgentCard, error) {
 		return nil, fmt.Errorf("failed to decode agent card: %w", err)
 	}
 
-	// Honor the URL the card advertises for subsequent requests.
-	if len(card.SupportedInterfaces) > 0 && card.SupportedInterfaces[0] != nil {
-		if u := strings.TrimRight(card.SupportedInterfaces[0].URL, "/"); u != "" {
-			c.agentBaseURL = u
-		}
-	}
-
+	c.card = card
 	return card, nil
 }
 
+// baseURL derives the request base URL from the stored card's first
+// interface. Returns "" when FetchCard has not yet populated the card
+// or the card has no usable interface, in which case URL builders will
+// produce obviously-wrong paths that fail fast with a clear error.
+func (c *Client) baseURL() string {
+	if c.card == nil || len(c.card.SupportedInterfaces) == 0 || c.card.SupportedInterfaces[0] == nil {
+		return ""
+	}
+	return strings.TrimRight(c.card.SupportedInterfaces[0].URL, "/")
+}
+
 func (c *Client) sendURL() string {
-	return c.agentBaseURL + "/message:send"
+	return c.baseURL() + "/message:send"
 }
 
 func (c *Client) streamURL() string {
-	return c.agentBaseURL + "/message:stream"
+	return c.baseURL() + "/message:stream"
 }
 
 func (c *Client) taskURL(taskID string) string {
-	return c.agentBaseURL + "/tasks/" + url.PathEscape(taskID)
+	return c.baseURL() + "/tasks/" + url.PathEscape(taskID)
 }
 
 func (c *Client) cancelTaskURL(taskID string) string {
-	return c.agentBaseURL + "/tasks/" + url.PathEscape(taskID) + ":cancel"
+	return c.baseURL() + "/tasks/" + url.PathEscape(taskID) + ":cancel"
 }
 
 // SendMessage sends a message to the Vertex AI A2A endpoint and returns

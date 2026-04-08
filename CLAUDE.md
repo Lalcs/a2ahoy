@@ -31,7 +31,7 @@ go test ./internal/vertexai/...
 - `a2ahoy get <agent-url> <task-id>` — Retrieve a task by ID via `tasks/get` (`GetTask`)
 - `a2ahoy cancel <agent-url> <task-id>` — Cancel a task by ID via `tasks/cancel` (`CancelTask`)
 
-Global flags: `--gcp-auth` (GCP ADC ID token auth), `--vertex-ai` (Vertex AI Agent Engine mode), `--json` (raw JSON output), `--header KEY=VALUE` (repeatable custom HTTP header)
+Global flags: `--gcp-auth` (GCP ADC ID token auth), `--vertex-ai` (Vertex AI Agent Engine mode), `--v03-rest-mount` (opt-in A2A v0.3 REST `/v1` mount-point prefix workaround for Python a2a-sdk / ADK / Vertex AI peers; applies to both standard and Vertex AI paths), `--json` (raw JSON output), `--header KEY=VALUE` (repeatable custom HTTP header), `--bearer-token` (static Bearer token, also from `A2A_BEARER_TOKEN` env var)
 
 ## Architecture
 

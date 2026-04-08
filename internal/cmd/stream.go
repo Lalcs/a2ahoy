@@ -32,11 +32,12 @@ func runStream(cmd *cobra.Command, args []string) error {
 	text := args[1]
 
 	a2aClient, _, err := client.New(ctx, client.Options{
-		BaseURL:     baseURL,
-		GCPAuth:     flagGCPAuth,
-		VertexAI:    flagVertexAI,
-		Headers:     flagHeaders,
-		BearerToken: flagBearerToken,
+		BaseURL:      baseURL,
+		GCPAuth:      flagGCPAuth,
+		VertexAI:     flagVertexAI,
+		V03RESTMount: flagV03RESTMount,
+		Headers:      flagHeaders,
+		BearerToken:  flagBearerToken,
 	})
 	if err != nil {
 		return err
