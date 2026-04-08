@@ -1,4 +1,6 @@
 # A2Ahoy
+[![CI](https://github.com/Lalcs/a2ahoy/actions/workflows/ci.yml/badge.svg)](https://github.com/Lalcs/a2ahoy/actions/workflows/ci.yml)
+[![Release](https://github.com/Lalcs/a2ahoy/actions/workflows/release.yml/badge.svg)](https://github.com/Lalcs/a2ahoy/actions/workflows/release.yml)
 
 <p align="center">
   <img src="./docs/logo.svg" alt="A2Ahoy Logo">
