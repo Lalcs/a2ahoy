@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"iter"
 	"os"
 	"os/signal"
 
@@ -26,13 +27,15 @@ var streamCmd = &cobra.Command{
 	RunE:  runStream,
 }
 
-// newStreamContext creates the cancellable context used by runStream.
-// Tests override this to inject a pre-cancelled or manually-cancellable
-// context so the SIGINT path can be exercised without sending a real OS
-// signal.
-var newStreamContext = func() (context.Context, context.CancelFunc) {
+// defaultSignalContext returns a context that is cancelled on SIGINT.
+// Used as the default value for newStreamContext and newResubscribeContext.
+func defaultSignalContext() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt)
 }
+
+// newStreamContext is a test seam — tests override it to exercise the
+// SIGINT code path without sending a real OS signal.
+var newStreamContext = defaultSignalContext
 
 func init() {
 	streamCmd.Flags().StringArrayVar(&flagStreamFiles, "file", nil, "Attach a local file (repeatable)")
@@ -63,16 +66,23 @@ func runStream(cmd *cobra.Command, args []string) error {
 		Message: msg,
 	}
 
+	return consumeEventStream(ctx, cmd, a2aClient.SendStreamingMessage(ctx, req), "stream error")
+}
+
+// consumeEventStream reads events from an SSE iterator and prints them.
+// It handles JSON/human-readable output dispatch and SIGINT detection.
+// Shared by runStream and runTaskResubscribe.
+func consumeEventStream(ctx context.Context, cmd *cobra.Command, events iter.Seq2[a2a.Event, error], errLabel string) error {
 	out := cmd.OutOrStdout()
 	errOut := cmd.ErrOrStderr()
 
-	for event, err := range a2aClient.SendStreamingMessage(ctx, req) {
+	for event, err := range events {
 		if err != nil {
 			if ctx.Err() != nil {
 				_, _ = fmt.Fprintln(errOut, "\nInterrupted.")
 				return nil
 			}
-			return fmt.Errorf("stream error: %w", err)
+			return fmt.Errorf("%s: %w", errLabel, err)
 		}
 
 		if flagJSON {
@@ -80,8 +90,6 @@ func runStream(cmd *cobra.Command, args []string) error {
 				return err
 			}
 		} else {
-			// PrintStreamEvent uses fmt.Fprintf internally and always
-			// returns nil, so the returned error is intentionally discarded.
 			_ = presenter.PrintStreamEvent(out, event)
 		}
 	}

@@ -28,6 +28,10 @@ var ErrListTasksNotSupported = errors.New("ListTasks is not supported by Vertex 
 // expose these operations.
 var ErrPushNotSupported = errors.New("push notification configuration is not supported by Vertex AI Agent Engine")
 
+// ErrSubscribeToTaskNotSupported is returned when SubscribeToTask is called
+// on a Vertex AI Agent Engine client, which does not expose this operation.
+var ErrSubscribeToTaskNotSupported = errors.New("SubscribeToTask is not supported by Vertex AI Agent Engine")
+
 // Client communicates with a Vertex AI Agent Engine A2A endpoint.
 // It translates between standard a2a.* types and the Vertex AI
 // Protobuf JSON wire format.
@@ -342,6 +346,13 @@ func (c *Client) CancelTask(ctx context.Context, a2aReq *a2a.CancelTaskRequest) 
 	return toA2ATask(wireResp), nil
 }
 
+// SubscribeToTask is not supported by Vertex AI Agent Engine.
+func (c *Client) SubscribeToTask(_ context.Context, _ *a2a.SubscribeToTaskRequest) iter.Seq2[a2a.Event, error] {
+	return func(yield func(a2a.Event, error) bool) {
+		yield(nil, ErrSubscribeToTaskNotSupported)
+	}
+}
+
 // ListTasks is not supported by Vertex AI Agent Engine.
 func (c *Client) ListTasks(_ context.Context, _ *a2a.ListTasksRequest) (*a2a.ListTasksResponse, error) {
 	return nil, ErrListTasksNotSupported
@@ -397,5 +408,9 @@ func (c *Client) newRequest(ctx context.Context, method, url string, body io.Rea
 // readErrorResponse reads the response body and returns a descriptive error.
 func readErrorResponse(resp *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	// Drain remaining bytes (up to 32 KiB) so the HTTP transport can
+	// reuse the underlying TCP connection via keep-alive. The limit
+	// prevents indefinite blocking on oversized error bodies.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 32*1024))
 	return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 }

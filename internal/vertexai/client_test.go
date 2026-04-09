@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1667,5 +1668,64 @@ func TestClient_ListTasks_NotSupported(t *testing.T) {
 	}
 	if !errors.Is(err, ErrListTasksNotSupported) {
 		t.Errorf("expected ErrListTasksNotSupported, got: %v", err)
+	}
+}
+
+func TestClient_SubscribeToTask_NotSupported(t *testing.T) {
+	c, server := newTestClient(t, http.NewServeMux())
+	defer server.Close()
+
+	var gotErr error
+	for _, err := range c.SubscribeToTask(context.Background(), &a2a.SubscribeToTaskRequest{ID: "task-1"}) {
+		if err != nil {
+			gotErr = err
+			break
+		}
+	}
+	if gotErr == nil {
+		t.Fatal("expected error for SubscribeToTask on Vertex AI")
+	}
+	if !errors.Is(gotErr, ErrSubscribeToTaskNotSupported) {
+		t.Errorf("expected ErrSubscribeToTaskNotSupported, got: %v", gotErr)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// readErrorResponse
+// ---------------------------------------------------------------------------
+
+func TestReadErrorResponse_Short(t *testing.T) {
+	body := "short error body"
+	resp := &http.Response{
+		StatusCode: 400,
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+	err := readErrorResponse(resp)
+	want := "HTTP 400: short error body"
+	if err.Error() != want {
+		t.Errorf("got %q, want %q", err.Error(), want)
+	}
+}
+
+func TestReadErrorResponse_LongBodyDrained(t *testing.T) {
+	// Build a body larger than the 4096-byte limit.
+	full := strings.Repeat("x", 8192)
+	r := strings.NewReader(full)
+	resp := &http.Response{
+		StatusCode: 502,
+		Body:       io.NopCloser(r),
+	}
+	err := readErrorResponse(resp)
+
+	// Error message should contain only the first 4096 bytes.
+	prefix := strings.Repeat("x", 4096)
+	want := "HTTP 502: " + prefix
+	if err.Error() != want {
+		t.Errorf("error message length: got %d, want %d", len(err.Error()), len(want))
+	}
+
+	// The underlying reader must be fully consumed (drained).
+	if remaining := r.Len(); remaining != 0 {
+		t.Errorf("body not fully drained: %d bytes remaining", remaining)
 	}
 }

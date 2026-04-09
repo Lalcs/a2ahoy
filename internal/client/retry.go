@@ -98,6 +98,11 @@ func (r *retryClient) SendStreamingMessage(ctx context.Context, req *a2a.SendMes
 	return r.inner.SendStreamingMessage(ctx, req)
 }
 
+// SubscribeToTask is NOT retried — SSE streams are not safely re-entrant.
+func (r *retryClient) SubscribeToTask(ctx context.Context, req *a2a.SubscribeToTaskRequest) iter.Seq2[a2a.Event, error] {
+	return r.inner.SubscribeToTask(ctx, req)
+}
+
 func (r *retryClient) GetTask(ctx context.Context, req *a2a.GetTaskRequest) (*a2a.Task, error) {
 	return retry(ctx, r.maxRetries, func() (*a2a.Task, error) {
 		return r.inner.GetTask(ctx, req)

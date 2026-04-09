@@ -25,6 +25,10 @@ type A2AClient interface {
 	// tasks already in a terminal state.
 	CancelTask(ctx context.Context, req *a2a.CancelTaskRequest) (*a2a.Task, error)
 
+	// SubscribeToTask subscribes to events for an existing task via SSE.
+	// The returned iterator yields events as they arrive from the server.
+	SubscribeToTask(ctx context.Context, req *a2a.SubscribeToTaskRequest) iter.Seq2[a2a.Event, error]
+
 	// ListTasks lists tasks with optional filtering and pagination.
 	ListTasks(ctx context.Context, req *a2a.ListTasksRequest) (*a2a.ListTasksResponse, error)
 

@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Lalcs/a2ahoy/internal/updater"
 	"github.com/Lalcs/a2ahoy/internal/version"
@@ -205,6 +206,41 @@ func a2aTestServer(t *testing.T) *httptest.Server {
 			w.Header().Set("Content-Type", "application/json")
 			result := rawTaskJSON("task-cancel-1", "ctx-cancel", "TASK_STATE_CANCELED")
 			_, _ = w.Write(jsonRPCResponse(req.ID, result))
+
+		case "SubscribeToTask":
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "no flusher", http.StatusInternalServerError)
+				return
+			}
+
+			statusResult := json.RawMessage(`{
+				"statusUpdate": {
+					"id": "task-resub-1",
+					"contextId": "ctx-resub",
+					"status": {"state": "TASK_STATE_WORKING"}
+				}
+			}`)
+			line1 := jsonRPCResponse(req.ID, statusResult)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", line1)
+			flusher.Flush()
+
+			taskResult := json.RawMessage(`{
+				"task": {
+					"id": "task-resub-1",
+					"contextId": "ctx-resub",
+					"status": {"state": "TASK_STATE_COMPLETED"},
+					"history": [
+						{"role": "ROLE_AGENT", "parts": [{"text": "resubscribed reply"}]}
+					]
+				}
+			}`)
+			line2 := jsonRPCResponse(req.ID, taskResult)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", line2)
+			flusher.Flush()
 
 		case "ListTasks":
 			w.Header().Set("Content-Type", "application/json")
@@ -920,6 +956,104 @@ func TestRunTaskList_ServerError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// task resubscribe
+// ---------------------------------------------------------------------------
+
+func TestRunTaskResubscribe_HumanReadable(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{"task", "resubscribe", ts.URL, "task-resub-1"})
+	var buf strings.Builder
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "TASK_STATE_WORKING") {
+		t.Errorf("expected status update in output, got: %s", out)
+	}
+	if !strings.Contains(out, "TASK_STATE_COMPLETED") {
+		t.Errorf("expected completed status in output, got: %s", out)
+	}
+}
+
+func TestRunTaskResubscribe_JSON(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{"--json", "task", "resubscribe", ts.URL, "task-resub-1"})
+	var buf strings.Builder
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "task-resub-1") {
+		t.Errorf("expected task ID in JSON output, got: %s", out)
+	}
+}
+
+func TestRunTaskResubscribe_InvalidURL(t *testing.T) {
+	resetGlobalFlags(t)
+
+	rootCmd.SetArgs([]string{"task", "resubscribe", "http://127.0.0.1:1", "some-task-id"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unreachable URL")
+	}
+}
+
+func TestRunTaskResubscribe_Interrupted(t *testing.T) {
+	resetGlobalFlags(t)
+
+	ts, started := interruptTestServer(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	oldResubCtx := newResubscribeContext
+	t.Cleanup(func() { newResubscribeContext = oldResubCtx })
+	newResubscribeContext = func() (context.Context, context.CancelFunc) {
+		return ctx, cancel
+	}
+
+	rootCmd.SetArgs([]string{"task", "resubscribe", ts.URL, "task-int"})
+	rootCmd.SetOut(io.Discard)
+	var errBuf strings.Builder
+	rootCmd.SetErr(&errBuf)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- rootCmd.Execute()
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for server to send first event")
+	}
+	cancel()
+
+	err := <-done
+	if err != nil {
+		t.Fatalf("expected nil error on interrupt, got: %v", err)
+	}
+	if !strings.Contains(errBuf.String(), "Interrupted") {
+		t.Errorf("expected 'Interrupted' on stderr, got: %q", errBuf.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
 // runUpdate
 // ---------------------------------------------------------------------------
 
@@ -1422,16 +1556,14 @@ func TestRunStream_PrintJSONError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Stream context cancellation
+// Stream / resubscribe context cancellation helpers
 // ---------------------------------------------------------------------------
 
-// TestRunStream_Interrupted tests the ctx.Err() != nil branch by
-// overriding newStreamContext with a context that is cancelled after
-// the A2A client is created but before the streaming read completes.
-func TestRunStream_Interrupted(t *testing.T) {
-	resetGlobalFlags(t)
-
-	// Server that sends one SSE event then hangs.
+// interruptTestServer creates a server that sends one SSE event then blocks
+// until the client disconnects. Returns the server and a channel that is
+// closed when the first event has been flushed.
+func interruptTestServer(t *testing.T) (*httptest.Server, <-chan struct{}) {
+	t.Helper()
 	started := make(chan struct{})
 	var ts *httptest.Server
 	mux := http.NewServeMux()
@@ -1467,15 +1599,22 @@ func TestRunStream_Interrupted(t *testing.T) {
 		_, _ = fmt.Fprintf(w, "data: %s\n\n", line)
 		flusher.Flush()
 
-		// Signal that we sent the first event.
 		close(started)
-		// Block until the client disconnects.
 		<-r.Context().Done()
 	})
 	ts = httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
+	return ts, started
+}
 
-	// Create a context we can cancel programmatically.
+// TestRunStream_Interrupted tests the ctx.Err() != nil branch by
+// overriding newStreamContext with a context that is cancelled after
+// the A2A client is created but before the streaming read completes.
+func TestRunStream_Interrupted(t *testing.T) {
+	resetGlobalFlags(t)
+
+	ts, started := interruptTestServer(t)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
@@ -1485,19 +1624,29 @@ func TestRunStream_Interrupted(t *testing.T) {
 		return ctx, cancel
 	}
 
-	// Cancel the context once the server has sent the first event.
-	go func() {
-		<-started
-		cancel()
-	}()
-
 	rootCmd.SetArgs([]string{"stream", ts.URL, "hello"})
 	rootCmd.SetOut(io.Discard)
-	rootCmd.SetErr(io.Discard)
+	var errBuf strings.Builder
+	rootCmd.SetErr(&errBuf)
 
-	// The stream should return nil (not error) when interrupted.
-	if err := rootCmd.Execute(); err != nil {
-		t.Fatalf("expected nil error for interrupted stream, got: %v", err)
+	done := make(chan error, 1)
+	go func() {
+		done <- rootCmd.Execute()
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for server to send first event")
+	}
+	cancel()
+
+	err := <-done
+	if err != nil {
+		t.Fatalf("expected nil error on interrupt, got: %v", err)
+	}
+	if !strings.Contains(errBuf.String(), "Interrupted") {
+		t.Errorf("expected 'Interrupted' on stderr, got: %q", errBuf.String())
 	}
 }
 
@@ -1528,15 +1677,17 @@ func TestRunUpdate_UnsupportedPlatform(t *testing.T) {
 }
 
 // defaultMakeUpdateFetcher, defaultMakeUpdateInstaller,
-// defaultDetectPlatform, and defaultNewStreamContext capture the
-// original package-level factory functions at init time so
-// TestDefaultFactoryFunctions can exercise them even after other
-// tests have overridden the package-level vars.
+// defaultDetectPlatform, defaultNewStreamContext, and
+// defaultNewResubscribeContext capture the original package-level
+// factory functions at init time so TestDefaultFactoryFunctions can
+// exercise them even after other tests have overridden the
+// package-level vars.
 var (
-	defaultMakeUpdateFetcher   = makeUpdateFetcher
-	defaultMakeUpdateInstaller = makeUpdateInstaller
-	defaultDetectPlatform      = detectPlatform
-	defaultNewStreamContext    = newStreamContext
+	defaultMakeUpdateFetcher     = makeUpdateFetcher
+	defaultMakeUpdateInstaller   = makeUpdateInstaller
+	defaultDetectPlatform        = detectPlatform
+	defaultNewStreamContext      = newStreamContext
+	defaultNewResubscribeContext = newResubscribeContext
 )
 
 func TestDefaultFactoryFunctions(t *testing.T) {
@@ -1561,6 +1712,12 @@ func TestDefaultFactoryFunctions(t *testing.T) {
 		t.Error("default stream context factory returned nil context")
 	}
 	cancel()
+
+	rctx, rcancel := defaultNewResubscribeContext()
+	if rctx == nil {
+		t.Error("default resubscribe context factory returned nil context")
+	}
+	rcancel()
 }
 
 // ---------------------------------------------------------------------------

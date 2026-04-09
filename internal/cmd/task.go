@@ -65,6 +65,24 @@ subsequent pages.`,
 	RunE: runTaskList,
 }
 
+var taskResubscribeCmd = &cobra.Command{
+	Use:   "resubscribe <agent-url> <task-id>",
+	Short: "Resubscribe to events for an existing task",
+	Long: `Resubscribes to a task via the SubscribeToTask protocol method and
+streams events in real-time.
+
+This is useful for reconnecting to an in-progress task after a network
+disconnection. The server returns events for the current task state.
+
+Press Ctrl+C to disconnect from the event stream.`,
+	Args: cobra.ExactArgs(2),
+	RunE: runTaskResubscribe,
+}
+
+// newResubscribeContext is a test seam — tests override it to exercise the
+// SIGINT code path without sending a real OS signal.
+var newResubscribeContext = defaultSignalContext
+
 func init() {
 	// task get flags
 	taskGetCmd.Flags().Int(flagNameHistoryLength, 0,
@@ -89,6 +107,7 @@ func init() {
 	taskCmd.AddCommand(taskGetCmd)
 	taskCmd.AddCommand(taskCancelCmd)
 	taskCmd.AddCommand(taskListCmd)
+	taskCmd.AddCommand(taskResubscribeCmd)
 	rootCmd.AddCommand(taskCmd)
 }
 
@@ -203,4 +222,24 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 		return presenter.PrintJSON(out, resp)
 	}
 	return presenter.PrintListTasks(out, resp)
+}
+
+func runTaskResubscribe(cmd *cobra.Command, args []string) error {
+	ctx, cancel := newResubscribeContext()
+	defer cancel()
+
+	baseURL := args[0]
+	taskID := args[1]
+
+	a2aClient, _, err := client.New(ctx, clientOptions(baseURL))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = a2aClient.Destroy() }()
+
+	req := &a2a.SubscribeToTaskRequest{
+		ID: a2a.TaskID(taskID),
+	}
+
+	return consumeEventStream(ctx, cmd, a2aClient.SubscribeToTask(ctx, req), "SubscribeToTask failed")
 }

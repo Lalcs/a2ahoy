@@ -250,6 +250,7 @@ func TestRetry_RespectsContextCancellation(t *testing.T) {
 type mockA2AClient struct {
 	sendMessageCalls          int
 	sendStreamingMessageCalls int
+	subscribeToTaskCalls      int
 }
 
 func (m *mockA2AClient) SendMessage(_ context.Context, _ *a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
@@ -259,6 +260,11 @@ func (m *mockA2AClient) SendMessage(_ context.Context, _ *a2a.SendMessageRequest
 
 func (m *mockA2AClient) SendStreamingMessage(_ context.Context, _ *a2a.SendMessageRequest) iter.Seq2[a2a.Event, error] {
 	m.sendStreamingMessageCalls++
+	return func(yield func(a2a.Event, error) bool) {}
+}
+
+func (m *mockA2AClient) SubscribeToTask(_ context.Context, _ *a2a.SubscribeToTaskRequest) iter.Seq2[a2a.Event, error] {
+	m.subscribeToTaskCalls++
 	return func(yield func(a2a.Event, error) bool) {}
 }
 
@@ -296,5 +302,19 @@ func TestRetryClient_StreamNotRetried(t *testing.T) {
 
 	if mock.sendStreamingMessageCalls != 1 {
 		t.Errorf("sendStreamingMessageCalls = %d, want 1 (should pass through without retry)", mock.sendStreamingMessageCalls)
+	}
+}
+
+func TestRetryClient_SubscribeToTaskNotRetried(t *testing.T) {
+	mock := &mockA2AClient{}
+	rc := &retryClient{inner: mock, maxRetries: 3}
+
+	seq := rc.SubscribeToTask(context.Background(), &a2a.SubscribeToTaskRequest{})
+	// Consume the iterator
+	for range seq {
+	}
+
+	if mock.subscribeToTaskCalls != 1 {
+		t.Errorf("subscribeToTaskCalls = %d, want 1 (should pass through without retry)", mock.subscribeToTaskCalls)
 	}
 }
