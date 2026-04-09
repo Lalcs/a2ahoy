@@ -15,6 +15,7 @@ import (
 
 	"github.com/Lalcs/a2ahoy/internal/updater"
 	"github.com/Lalcs/a2ahoy/internal/version"
+	"github.com/spf13/cobra"
 	pflag "github.com/spf13/pflag"
 )
 
@@ -37,9 +38,17 @@ func resetGlobalFlags(t *testing.T) {
 	t.Setenv(bearerTokenEnvVar, "")
 	// Reset Changed state on subcommand-local flags so tests are
 	// order-independent. Cobra does not clear this between Execute() calls.
-	for _, cmd := range rootCmd.Commands() {
-		cmd.Flags().Visit(func(f *pflag.Flag) { f.Changed = false })
+	// Recurse into nested subcommands (e.g. push set/get/list/delete).
+	var resetFlags func(cmds []*cobra.Command)
+	resetFlags = func(cmds []*cobra.Command) {
+		for _, cmd := range cmds {
+			cmd.Flags().Visit(func(f *pflag.Flag) { f.Changed = false })
+			if sub := cmd.Commands(); len(sub) > 0 {
+				resetFlags(sub)
+			}
+		}
 	}
+	resetFlags(rootCmd.Commands())
 }
 
 // v1CardJSON returns a minimal A2A spec v1.0 agent card JSON whose
@@ -203,6 +212,44 @@ func a2aTestServer(t *testing.T) *httptest.Server {
 				"nextPageToken": ""
 			}`)
 			w.Write(jsonRPCResponse(req.ID, result))
+
+		case "CreateTaskPushNotificationConfig":
+			w.Header().Set("Content-Type", "application/json")
+			result := json.RawMessage(`{
+				"taskId": "task-push-1",
+				"config": {
+					"id": "cfg-created",
+					"url": "https://example.com/notify",
+					"token": "tok-123"
+				}
+			}`)
+			w.Write(jsonRPCResponse(req.ID, result))
+
+		case "GetTaskPushNotificationConfig":
+			w.Header().Set("Content-Type", "application/json")
+			result := json.RawMessage(`{
+				"taskId": "task-push-1",
+				"config": {
+					"id": "cfg-get-1",
+					"url": "https://example.com/hook",
+					"authentication": {"scheme": "Bearer", "credentials": "secret"}
+				}
+			}`)
+			w.Write(jsonRPCResponse(req.ID, result))
+
+		case "ListTaskPushNotificationConfigs":
+			w.Header().Set("Content-Type", "application/json")
+			result := json.RawMessage(`[
+				{"taskId": "task-push-1", "config": {"id": "cfg-1", "url": "https://example.com/a"}},
+				{"taskId": "task-push-1", "config": {"id": "cfg-2", "url": "https://example.com/b"}}
+			]`)
+			w.Write(jsonRPCResponse(req.ID, result))
+
+		case "DeleteTaskPushNotificationConfig":
+			w.Header().Set("Content-Type", "application/json")
+			// DeleteTaskPushConfig returns nil on success; the JSON-RPC
+			// response wraps a null result.
+			w.Write(jsonRPCResponse(req.ID, json.RawMessage(`null`)))
 
 		default:
 			w.Header().Set("Content-Type", "application/json")
@@ -1589,5 +1636,309 @@ func TestRunUpdate_ForceReinstall_CheckOnly(t *testing.T) {
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("runUpdate --force --check-only failed: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// push set / get / list / delete
+// ---------------------------------------------------------------------------
+
+func TestRunPushSet_HumanReadable(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	var buf strings.Builder
+	rootCmd.SetArgs([]string{"push", "set", ts.URL, "task-push-1", "--url", "https://example.com/notify"})
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runPushSet human-readable failed: %v", err)
+	}
+
+	got := buf.String()
+	checks := []string{
+		"Push Notification Config",
+		"task-push-1",
+		"cfg-created",
+		"https://example.com/notify",
+	}
+	for _, want := range checks {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in output:\n%s", want, got)
+		}
+	}
+}
+
+func TestRunPushSet_JSON(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	var buf strings.Builder
+	rootCmd.SetArgs([]string{"--json", "push", "set", ts.URL, "task-push-1", "--url", "https://example.com/notify"})
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runPushSet --json failed: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, `"cfg-created"`) {
+		t.Errorf("missing cfg-created in JSON output:\n%s", got)
+	}
+}
+
+func TestRunPushSet_WithAllFlags(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{
+		"push", "set", ts.URL, "task-push-1",
+		"--url", "https://example.com/notify",
+		"--push-id", "my-cfg",
+		"--token", "tok-abc",
+		"--auth-scheme", "Bearer",
+		"--auth-credentials", "secret",
+	})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runPushSet with all flags failed: %v", err)
+	}
+}
+
+func TestRunPushSet_MissingURLFlag(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{"push", "set", ts.URL, "task-push-1"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for missing --url flag")
+	}
+}
+
+func TestRunPushSet_AuthCredentialsWithoutScheme(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{
+		"push", "set", ts.URL, "task-push-1",
+		"--url", "https://example.com/notify",
+		"--auth-credentials", "secret",
+	})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --auth-credentials without --auth-scheme")
+	}
+	if !strings.Contains(err.Error(), "--auth-credentials requires --auth-scheme") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestRunPushGet_HumanReadable(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	var buf strings.Builder
+	rootCmd.SetArgs([]string{"push", "get", ts.URL, "task-push-1", "cfg-get-1"})
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runPushGet human-readable failed: %v", err)
+	}
+
+	got := buf.String()
+	checks := []string{
+		"Push Notification Config",
+		"task-push-1",
+		"cfg-get-1",
+		"https://example.com/hook",
+		"Bearer",
+	}
+	for _, want := range checks {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in output:\n%s", want, got)
+		}
+	}
+}
+
+func TestRunPushGet_JSON(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	var buf strings.Builder
+	rootCmd.SetArgs([]string{"--json", "push", "get", ts.URL, "task-push-1", "cfg-get-1"})
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runPushGet --json failed: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, `"cfg-get-1"`) {
+		t.Errorf("missing cfg-get-1 in JSON output:\n%s", got)
+	}
+}
+
+func TestRunPushList_HumanReadable(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	var buf strings.Builder
+	rootCmd.SetArgs([]string{"push", "list", ts.URL, "task-push-1"})
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runPushList human-readable failed: %v", err)
+	}
+
+	got := buf.String()
+	checks := []string{
+		"Push Notification Configs (2)",
+		"cfg-1",
+		"cfg-2",
+		"https://example.com/a",
+		"https://example.com/b",
+	}
+	for _, want := range checks {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in output:\n%s", want, got)
+		}
+	}
+}
+
+func TestRunPushList_JSON(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	var buf strings.Builder
+	rootCmd.SetArgs([]string{"--json", "push", "list", ts.URL, "task-push-1"})
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runPushList --json failed: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, `"cfg-1"`) {
+		t.Errorf("missing cfg-1 in JSON output:\n%s", got)
+	}
+	if !strings.Contains(got, `"cfg-2"`) {
+		t.Errorf("missing cfg-2 in JSON output:\n%s", got)
+	}
+}
+
+func TestRunPushList_WithPagination(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{
+		"push", "list", ts.URL, "task-push-1",
+		"--page-size", "10",
+		"--page-token", "next-abc",
+	})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runPushList with pagination flags failed: %v", err)
+	}
+}
+
+func TestRunPushDelete_HumanReadable(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	var buf strings.Builder
+	rootCmd.SetArgs([]string{"push", "delete", ts.URL, "task-push-1", "cfg-del-1"})
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runPushDelete human-readable failed: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "OK") {
+		t.Errorf("missing OK in output:\n%s", got)
+	}
+	if !strings.Contains(got, "cfg-del-1") {
+		t.Errorf("missing config ID in output:\n%s", got)
+	}
+}
+
+func TestRunPushDelete_JSON(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	var buf strings.Builder
+	rootCmd.SetArgs([]string{"--json", "push", "delete", ts.URL, "task-push-1", "cfg-del-1"})
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runPushDelete --json failed: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "{}") {
+		t.Errorf("expected empty JSON object in output:\n%s", got)
+	}
+}
+
+func TestRunPushSet_InvalidURL(t *testing.T) {
+	resetGlobalFlags(t)
+	rootCmd.SetArgs([]string{"push", "set", "http://127.0.0.1:1", "task-1", "--url", "https://example.com/notify"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("expected error for unreachable URL")
+	}
+}
+
+func TestRunPushGet_InvalidURL(t *testing.T) {
+	resetGlobalFlags(t)
+	rootCmd.SetArgs([]string{"push", "get", "http://127.0.0.1:1", "task-1", "cfg-1"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("expected error for unreachable URL")
+	}
+}
+
+func TestRunPushList_InvalidURL(t *testing.T) {
+	resetGlobalFlags(t)
+	rootCmd.SetArgs([]string{"push", "list", "http://127.0.0.1:1", "task-1"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("expected error for unreachable URL")
+	}
+}
+
+func TestRunPushDelete_InvalidURL(t *testing.T) {
+	resetGlobalFlags(t)
+	rootCmd.SetArgs([]string{"push", "delete", "http://127.0.0.1:1", "task-1", "cfg-1"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("expected error for unreachable URL")
 	}
 }

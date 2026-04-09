@@ -23,6 +23,11 @@ import (
 // Vertex AI Agent Engine client, which does not expose this operation.
 var ErrListTasksNotSupported = errors.New("ListTasks is not supported by Vertex AI Agent Engine")
 
+// ErrPushNotSupported is returned when push notification configuration
+// methods are called on a Vertex AI Agent Engine client, which does not
+// expose these operations.
+var ErrPushNotSupported = errors.New("push notification configuration is not supported by Vertex AI Agent Engine")
+
 // Client communicates with a Vertex AI Agent Engine A2A endpoint.
 // It translates between standard a2a.* types and the Vertex AI
 // Protobuf JSON wire format.
@@ -331,6 +336,26 @@ func (c *Client) CancelTask(ctx context.Context, a2aReq *a2a.CancelTaskRequest) 
 // ListTasks is not supported by Vertex AI Agent Engine.
 func (c *Client) ListTasks(_ context.Context, _ *a2a.ListTasksRequest) (*a2a.ListTasksResponse, error) {
 	return nil, ErrListTasksNotSupported
+}
+
+// CreateTaskPushConfig is not supported by Vertex AI Agent Engine.
+func (c *Client) CreateTaskPushConfig(_ context.Context, _ *a2a.CreateTaskPushConfigRequest) (*a2a.TaskPushConfig, error) {
+	return nil, ErrPushNotSupported
+}
+
+// GetTaskPushConfig is not supported by Vertex AI Agent Engine.
+func (c *Client) GetTaskPushConfig(_ context.Context, _ *a2a.GetTaskPushConfigRequest) (*a2a.TaskPushConfig, error) {
+	return nil, ErrPushNotSupported
+}
+
+// ListTaskPushConfigs is not supported by Vertex AI Agent Engine.
+func (c *Client) ListTaskPushConfigs(_ context.Context, _ *a2a.ListTaskPushConfigRequest) ([]*a2a.TaskPushConfig, error) {
+	return nil, ErrPushNotSupported
+}
+
+// DeleteTaskPushConfig is not supported by Vertex AI Agent Engine.
+func (c *Client) DeleteTaskPushConfig(_ context.Context, _ *a2a.DeleteTaskPushConfigRequest) error {
+	return ErrPushNotSupported
 }
 
 // Destroy is a no-op for the Vertex AI client (no persistent resources).

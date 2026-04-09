@@ -28,6 +28,18 @@ type A2AClient interface {
 	// ListTasks lists tasks with optional filtering and pagination.
 	ListTasks(ctx context.Context, req *a2a.ListTasksRequest) (*a2a.ListTasksResponse, error)
 
+	// CreateTaskPushConfig creates a push notification configuration for a task.
+	CreateTaskPushConfig(ctx context.Context, req *a2a.CreateTaskPushConfigRequest) (*a2a.TaskPushConfig, error)
+
+	// GetTaskPushConfig retrieves a specific push notification configuration.
+	GetTaskPushConfig(ctx context.Context, req *a2a.GetTaskPushConfigRequest) (*a2a.TaskPushConfig, error)
+
+	// ListTaskPushConfigs lists all push notification configurations for a task.
+	ListTaskPushConfigs(ctx context.Context, req *a2a.ListTaskPushConfigRequest) ([]*a2a.TaskPushConfig, error)
+
+	// DeleteTaskPushConfig deletes a push notification configuration.
+	DeleteTaskPushConfig(ctx context.Context, req *a2a.DeleteTaskPushConfigRequest) error
+
 	// Destroy releases any resources held by the client.
 	Destroy() error
 }
