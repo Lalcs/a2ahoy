@@ -1096,7 +1096,7 @@ func TestNew_NewFromCardError(t *testing.T) {
 	// binding, so NewFromCard cannot find a suitable transport.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, fmt.Sprintf(`{
+		_, _ = fmt.Fprintf(w, `{
 			"name": "Unsupported Agent",
 			"description": "Agent with unsupported transport",
 			"version": "1.0",
@@ -1109,7 +1109,7 @@ func TestNew_NewFromCardError(t *testing.T) {
 				"protocolVersion": "99.0"
 			}],
 			"skills": []
-		}`, "http://localhost:1"))
+		}`, "http://localhost:1")
 	}))
 	defer ts.Close()
 

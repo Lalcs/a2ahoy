@@ -44,11 +44,7 @@ func isRetryable(err error) bool {
 
 	// The Vertex AI client formats HTTP errors as "HTTP <status>: <body>".
 	msg := err.Error()
-	if strings.Contains(msg, "HTTP 5") {
-		return true
-	}
-
-	return false
+	return strings.Contains(msg, "HTTP 5")
 }
 
 // maxBackoffShift is the largest safe shift for time.Second (int64
