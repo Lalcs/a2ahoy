@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/Lalcs/a2ahoy/internal/client"
 	"github.com/Lalcs/a2ahoy/internal/presenter"
@@ -51,8 +50,9 @@ func runSend(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("message/send failed: %w", err)
 	}
 
+	out := cmd.OutOrStdout()
 	if flagJSON {
-		return presenter.PrintJSON(os.Stdout, result)
+		return presenter.PrintJSON(out, result)
 	}
-	return presenter.PrintSendResult(os.Stdout, result)
+	return presenter.PrintSendResult(out, result)
 }

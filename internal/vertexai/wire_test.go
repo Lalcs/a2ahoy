@@ -39,6 +39,24 @@ func TestBuildSendRequest_GeneratesMessageID(t *testing.T) {
 	}
 }
 
+// TestNewWireMessage_EmptyMessageID verifies that newWireMessage generates a
+// UUID when the a2a.Message has an empty ID. This covers the auto-generation
+// branch in newWireMessage directly (complementing buildSendRequest tests).
+func TestNewWireMessage_EmptyMessageID(t *testing.T) {
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "" // explicitly empty
+
+	wm := newWireMessage(msg)
+
+	if wm.MessageID == "" {
+		t.Error("messageId should be auto-generated when source Message.ID is empty")
+	}
+	// Verify it looks like a UUID (36 chars with hyphens).
+	if len(wm.MessageID) != 36 || !strings.Contains(wm.MessageID, "-") {
+		t.Errorf("messageId should be a UUID, got %q", wm.MessageID)
+	}
+}
+
 func TestBuildSendRequest_JSONFormat(t *testing.T) {
 	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
 	msg.ID = "msg-001"

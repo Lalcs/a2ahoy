@@ -29,6 +29,13 @@ func NewGCPAccessTokenInterceptor(ctx context.Context) (*GCPAccessTokenIntercept
 	return &GCPAccessTokenInterceptor{tokenSource: creds.TokenSource}, nil
 }
 
+// NewGCPAccessTokenInterceptorFromSource creates a GCPAccessTokenInterceptor
+// from a pre-existing oauth2.TokenSource. This is useful for testing and for
+// callers that obtain their token source through non-ADC mechanisms.
+func NewGCPAccessTokenInterceptorFromSource(ts oauth2.TokenSource) *GCPAccessTokenInterceptor {
+	return &GCPAccessTokenInterceptor{tokenSource: ts}
+}
+
 // GetToken returns a fresh OAuth2 access token string for use outside the
 // interceptor (e.g., for adding auth headers to agent card resolution requests).
 func (g *GCPAccessTokenInterceptor) GetToken() (string, error) {

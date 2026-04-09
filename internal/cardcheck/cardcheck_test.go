@@ -257,6 +257,22 @@ func TestCheckInterfaces_InvalidURL(t *testing.T) {
 	}
 }
 
+func TestCheckInterfaces_UnparseableURL(t *testing.T) {
+	card := &a2a.AgentCard{
+		SupportedInterfaces: []*a2a.AgentInterface{
+			{
+				URL:             "http://example.com/%zz",
+				ProtocolBinding: a2a.TransportProtocolJSONRPC,
+				ProtocolVersion: "1.0",
+			},
+		},
+	}
+	issues := checkInterfaces(card)
+	if !containsCode(issues, "INTERFACE_INVALID_URL") {
+		t.Errorf("expected INTERFACE_INVALID_URL for unparseable URL, got %+v", issues)
+	}
+}
+
 func TestCheckInterfaces_EmptyProtocolVersion(t *testing.T) {
 	card := &a2a.AgentCard{
 		SupportedInterfaces: []*a2a.AgentInterface{
@@ -666,6 +682,32 @@ func TestCheckSkills_HealthySkill_NoIssue(t *testing.T) {
 	issues := checkSkills(card)
 	if len(issues) != 0 {
 		t.Errorf("expected no issues for healthy skill, got %+v", issues)
+	}
+}
+
+func TestCheckDuplicateInterfaceURLBinding_NilEntry(t *testing.T) {
+	card := &a2a.AgentCard{
+		SupportedInterfaces: []*a2a.AgentInterface{
+			nil,
+			{URL: "http://a", ProtocolBinding: a2a.TransportProtocolJSONRPC, ProtocolVersion: "1.0"},
+		},
+	}
+	issues := checkDuplicateInterfaceURLBinding(card)
+	if len(issues) != 0 {
+		t.Errorf("expected no issues when nil entry is present, got %+v", issues)
+	}
+}
+
+func TestCheckProtocolVersionRecognized_NilEntry(t *testing.T) {
+	card := &a2a.AgentCard{
+		SupportedInterfaces: []*a2a.AgentInterface{
+			nil,
+			{URL: "http://x", ProtocolBinding: a2a.TransportProtocolJSONRPC, ProtocolVersion: "1.0"},
+		},
+	}
+	issues := checkProtocolVersionRecognized(card)
+	if len(issues) != 0 {
+		t.Errorf("expected no issues when nil entry is present, got %+v", issues)
 	}
 }
 

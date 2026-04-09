@@ -256,6 +256,19 @@ func TestPrintParts_MultipleParts(t *testing.T) {
 	}
 }
 
+func TestPrintSendResultAny_UnknownType(t *testing.T) {
+	var buf bytes.Buffer
+	err := printSendResultAny(&buf, "not a task or message")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "Unknown result type: string") {
+		t.Errorf("expected unknown type message, got:\n%s", got)
+	}
+}
+
 func TestPrintSendResult_ArtifactWithoutNameAndDescription(t *testing.T) {
 	task := &a2a.Task{
 		ID:        "task-1",
@@ -282,5 +295,68 @@ func TestPrintSendResult_ArtifactWithoutNameAndDescription(t *testing.T) {
 	}
 	if !strings.Contains(got, "artifact content") {
 		t.Errorf("missing artifact content in output:\n%s", got)
+	}
+}
+
+func TestTextFromParts_TextPart(t *testing.T) {
+	parts := a2a.ContentParts{a2a.NewTextPart("hello world")}
+	got := TextFromParts(parts)
+	if got != "hello world" {
+		t.Errorf("expected %q, got %q", "hello world", got)
+	}
+}
+
+func TestTextFromParts_DataPart(t *testing.T) {
+	parts := a2a.ContentParts{a2a.NewDataPart(map[string]any{"key": "value"})}
+	got := TextFromParts(parts)
+	if !strings.Contains(got, "[data:") {
+		t.Errorf("expected data marker, got %q", got)
+	}
+}
+
+func TestTextFromParts_URLPart(t *testing.T) {
+	parts := a2a.ContentParts{a2a.NewFileURLPart("https://example.com/file.txt", "text/plain")}
+	got := TextFromParts(parts)
+	want := "[url: https://example.com/file.txt]"
+	if got != want {
+		t.Errorf("expected %q, got %q", want, got)
+	}
+}
+
+func TestTextFromParts_RawPart(t *testing.T) {
+	data := []byte("binary data here")
+	parts := a2a.ContentParts{a2a.NewRawPart(data)}
+	got := TextFromParts(parts)
+	want := "[raw: 16 bytes]"
+	if got != want {
+		t.Errorf("expected %q, got %q", want, got)
+	}
+}
+
+func TestTextFromParts_NilPart(t *testing.T) {
+	parts := a2a.ContentParts{nil}
+	got := TextFromParts(parts)
+	if got != "" {
+		t.Errorf("expected empty string for nil part, got %q", got)
+	}
+}
+
+func TestTextFromParts_MultipleParts(t *testing.T) {
+	parts := a2a.ContentParts{
+		a2a.NewTextPart("hello"),
+		a2a.NewFileURLPart("https://example.com", "text/plain"),
+		a2a.NewTextPart(" world"),
+	}
+	got := TextFromParts(parts)
+	want := "hello[url: https://example.com] world"
+	if got != want {
+		t.Errorf("expected %q, got %q", want, got)
+	}
+}
+
+func TestTextFromParts_EmptyParts(t *testing.T) {
+	got := TextFromParts(a2a.ContentParts{})
+	if got != "" {
+		t.Errorf("expected empty string for empty parts, got %q", got)
 	}
 }

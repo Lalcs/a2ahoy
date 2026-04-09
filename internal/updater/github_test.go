@@ -198,3 +198,31 @@ func TestRelease_FindAssetForPlatform_NotFound(t *testing.T) {
 		t.Errorf("error should list available assets: %v", err)
 	}
 }
+
+func TestNewGitHubFetcher_Defaults(t *testing.T) {
+	f := NewGitHubFetcher()
+	if f == nil {
+		t.Fatal("NewGitHubFetcher returned nil")
+	}
+	if f.apiURL != defaultGitHubAPI {
+		t.Errorf("apiURL = %q, want %q", f.apiURL, defaultGitHubAPI)
+	}
+	if f.httpClient == nil {
+		t.Fatal("httpClient is nil")
+	}
+}
+
+func TestGitHubFetcher_NewRequestError(t *testing.T) {
+	// A URL containing a control character causes NewRequestWithContext to fail.
+	fetcher := &GitHubFetcher{
+		httpClient: &http.Client{Timeout: 5 * time.Second},
+		apiURL:     "http://example.com/\x00invalid",
+	}
+	_, err := fetcher.FetchLatestRelease(context.Background())
+	if err == nil {
+		t.Fatal("expected error for invalid URL")
+	}
+	if !strings.Contains(err.Error(), "build github request") {
+		t.Errorf("error should mention request building: %v", err)
+	}
+}

@@ -31,6 +31,17 @@ func NewInstaller() *Installer {
 	}
 }
 
+// NewInstallerForTest returns an Installer whose resolveExecutable always
+// returns the supplied path. This allows callers (e.g., cmd package tests)
+// to redirect the install target to a temporary file instead of the
+// running binary. Production code should use NewInstaller.
+func NewInstallerForTest(executablePath string) *Installer {
+	return &Installer{
+		httpClient:        &http.Client{Timeout: 5 * time.Minute},
+		resolveExecutable: func() (string, error) { return executablePath, nil },
+	}
+}
+
 // defaultResolveExecutable returns the path of the running binary with
 // symlinks resolved to their real targets. This is required when the
 // binary is installed via Homebrew or a similar tool that exposes the

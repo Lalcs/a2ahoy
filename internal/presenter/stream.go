@@ -9,6 +9,13 @@ import (
 
 // PrintStreamEvent writes a formatted display of a streaming event.
 func PrintStreamEvent(w io.Writer, event a2a.Event) error {
+	return printStreamEventAny(w, event)
+}
+
+// printStreamEventAny dispatches formatting based on the concrete type of v.
+// It is separated from PrintStreamEvent so that tests can exercise the default
+// branch, which is otherwise unreachable through the sealed Event interface.
+func printStreamEventAny(w io.Writer, event any) error {
 	switch v := event.(type) {
 	case *a2a.Task:
 		fmt.Fprintf(w, "%s id=%s status=%s\n", styledTag("[task]"), v.ID, styledTaskState(v.Status.State))

@@ -1061,6 +1061,576 @@ func TestClient_SendStreamingMessage_NoTrailingBlankLine(t *testing.T) {
 // TestClient_SendStreamingMessage_StreamRequestBody verifies that
 // SendStreamingMessage sends a request body *without* the blocking: true
 // configuration that buildSendRequest adds.
+// TestClient_Destroy verifies Destroy() returns nil (no-op).
+func TestClient_Destroy(t *testing.T) {
+	ep := &Endpoint{base: "https://example.com"}
+	c := NewClient(ep, func() (string, error) {
+		return "test-token", nil
+	})
+	if err := c.Destroy(); err != nil {
+		t.Errorf("Destroy() = %v, want nil", err)
+	}
+}
+
+// TestClient_FetchCard_DoError verifies that FetchCard returns an error
+// when the underlying HTTP request fails (e.g. cancelled context).
+func TestClient_FetchCard_DoError(t *testing.T) {
+	c, server := newTestClient(t, http.NewServeMux())
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := c.FetchCard(ctx)
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+	if !strings.Contains(err.Error(), "card request failed") {
+		t.Errorf("error should mention card request failed: %v", err)
+	}
+}
+
+// TestClient_FetchCard_DecodeError verifies that FetchCard returns an error
+// when the response body is not valid JSON (card parse failure).
+func TestClient_FetchCard_DecodeError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{not valid json`)
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	_, err := c.FetchCard(context.Background())
+	if err == nil {
+		t.Fatal("expected error for invalid card JSON")
+	}
+	if !strings.Contains(err.Error(), "failed to decode agent card") {
+		t.Errorf("error should mention decode failure: %v", err)
+	}
+}
+
+// newFailingTokenClient creates a test client whose token function always fails.
+func newFailingTokenClient(t *testing.T, handler http.Handler) (*Client, *httptest.Server) {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	ep := &Endpoint{base: server.URL}
+	c := NewClient(ep, func() (string, error) {
+		return "", fmt.Errorf("token unavailable")
+	})
+	c.card = &a2a.AgentCard{
+		SupportedInterfaces: []*a2a.AgentInterface{
+			{URL: server.URL + "/a2a/v1"},
+		},
+	}
+	return c, server
+}
+
+// TestClient_SendMessage_TokenError verifies that SendMessage returns an error
+// when the token function fails.
+func TestClient_SendMessage_TokenError(t *testing.T) {
+	c, server := newFailingTokenClient(t, http.NewServeMux())
+	defer server.Close()
+
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	_, err := c.SendMessage(context.Background(), &a2a.SendMessageRequest{Message: msg})
+	if err == nil {
+		t.Fatal("expected error for token failure")
+	}
+	if !strings.Contains(err.Error(), "access token") {
+		t.Errorf("error should mention access token: %v", err)
+	}
+}
+
+// TestClient_SendMessage_DoError verifies that SendMessage returns an error
+// when the HTTP request fails (e.g. cancelled context).
+func TestClient_SendMessage_DoError(t *testing.T) {
+	c, server := newTestClient(t, http.NewServeMux())
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	_, err := c.SendMessage(ctx, &a2a.SendMessageRequest{Message: msg})
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+	if !strings.Contains(err.Error(), "send request failed") {
+		t.Errorf("error should mention send request failed: %v", err)
+	}
+}
+
+// TestClient_SendMessage_DecodeError verifies that SendMessage returns an error
+// when the response body is not valid JSON.
+func TestClient_SendMessage_DecodeError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/message:send", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{not valid}`)
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	_, err := c.SendMessage(context.Background(), &a2a.SendMessageRequest{Message: msg})
+	if err == nil {
+		t.Fatal("expected error for invalid JSON response")
+	}
+	if !strings.Contains(err.Error(), "failed to decode response") {
+		t.Errorf("error should mention decode failure: %v", err)
+	}
+}
+
+// TestClient_SendStreamingMessage_TokenError verifies that SendStreamingMessage
+// yields an error when the token function fails.
+func TestClient_SendStreamingMessage_TokenError(t *testing.T) {
+	c, server := newFailingTokenClient(t, http.NewServeMux())
+	defer server.Close()
+
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "msg-test"
+
+	var gotErr error
+	for _, err := range c.SendStreamingMessage(context.Background(), &a2a.SendMessageRequest{Message: msg}) {
+		if err != nil {
+			gotErr = err
+			break
+		}
+	}
+
+	if gotErr == nil {
+		t.Fatal("expected error for token failure")
+	}
+	if !strings.Contains(gotErr.Error(), "access token") {
+		t.Errorf("error should mention access token: %v", gotErr)
+	}
+}
+
+// TestClient_SendStreamingMessage_HTTPError verifies that SendStreamingMessage
+// yields an error when the server returns a non-200 status.
+func TestClient_SendStreamingMessage_HTTPError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/message:stream", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, "internal error")
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	_, err := collectStream(t, c)
+	if err == nil {
+		t.Fatal("expected error for 500")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("error should mention 500: %v", err)
+	}
+}
+
+// TestClient_SendStreamingMessage_DoError verifies that SendStreamingMessage
+// yields an error when the HTTP request fails (e.g. cancelled context).
+func TestClient_SendStreamingMessage_DoError(t *testing.T) {
+	c, server := newTestClient(t, http.NewServeMux())
+	defer server.Close()
+
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "msg-test"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var gotErr error
+	for _, err := range c.SendStreamingMessage(ctx, &a2a.SendMessageRequest{Message: msg}) {
+		if err != nil {
+			gotErr = err
+			break
+		}
+	}
+
+	if gotErr == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+	if !strings.Contains(gotErr.Error(), "stream request failed") {
+		t.Errorf("error should mention stream request failed: %v", gotErr)
+	}
+}
+
+// TestClient_SendStreamingMessage_ParseError verifies that SendStreamingMessage
+// yields an error when a data field contains invalid JSON.
+func TestClient_SendStreamingMessage_ParseError(t *testing.T) {
+	rawBody := "data: {not valid json}\n\n"
+
+	c, server := newTestClient(t, streamBodyHandler(t, rawBody))
+	defer server.Close()
+
+	_, err := collectStream(t, c)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON in stream data")
+	}
+	if !strings.Contains(err.Error(), "failed to decode stream event") {
+		t.Errorf("error should mention decode failure: %v", err)
+	}
+}
+
+// TestClient_SendStreamingMessage_FieldOnlyLine verifies that an SSE line
+// without a colon (field name only, no value) is handled without crashing.
+// Per the SSE spec, such lines set the field with an empty value.
+func TestClient_SendStreamingMessage_FieldOnlyLine(t *testing.T) {
+	// "retry" is a field-only line (no colon), followed by a valid event.
+	rawBody := "retry\n" +
+		`data: {"task":{"id":"task-fo","status":{"state":"TASK_STATE_COMPLETED"}}}` + "\n\n"
+
+	c, server := newTestClient(t, streamBodyHandler(t, rawBody))
+	defer server.Close()
+
+	events, err := collectStream(t, c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events: got %d, want 1", len(events))
+	}
+	task := events[0].(*a2a.Task)
+	if task.ID != "task-fo" {
+		t.Errorf("task.ID: got %q, want %q", task.ID, "task-fo")
+	}
+}
+
+// TestClient_SendStreamingMessage_EarlyReturn verifies that the consumer
+// can stop iterating early (dispatch returns false) and the stream tears
+// down cleanly.
+func TestClient_SendStreamingMessage_EarlyReturn(t *testing.T) {
+	rawBody := `data: {"task":{"id":"t1","status":{"state":"TASK_STATE_WORKING"}}}` + "\n\n" +
+		`data: {"task":{"id":"t2","status":{"state":"TASK_STATE_COMPLETED"}}}` + "\n\n"
+
+	c, server := newTestClient(t, streamBodyHandler(t, rawBody))
+	defer server.Close()
+
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "msg-test"
+
+	var events []a2a.Event
+	for event, err := range c.SendStreamingMessage(context.Background(), &a2a.SendMessageRequest{Message: msg}) {
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		events = append(events, event)
+		break // stop after first event
+	}
+
+	if len(events) != 1 {
+		t.Fatalf("events: got %d, want 1 (early return)", len(events))
+	}
+	task := events[0].(*a2a.Task)
+	if task.ID != "t1" {
+		t.Errorf("task.ID: got %q, want %q", task.ID, "t1")
+	}
+}
+
+// TestClient_GetTask_TokenError verifies that GetTask returns an error
+// when the token function fails.
+func TestClient_GetTask_TokenError(t *testing.T) {
+	c, server := newFailingTokenClient(t, http.NewServeMux())
+	defer server.Close()
+
+	_, err := c.GetTask(context.Background(), &a2a.GetTaskRequest{
+		ID: a2a.TaskID("task-001"),
+	})
+	if err == nil {
+		t.Fatal("expected error for token failure")
+	}
+	if !strings.Contains(err.Error(), "access token") {
+		t.Errorf("error should mention access token: %v", err)
+	}
+}
+
+// TestClient_GetTask_DoError verifies that GetTask returns an error
+// when the HTTP request fails (e.g. cancelled context).
+func TestClient_GetTask_DoError(t *testing.T) {
+	c, server := newTestClient(t, http.NewServeMux())
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := c.GetTask(ctx, &a2a.GetTaskRequest{
+		ID: a2a.TaskID("task-001"),
+	})
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+	if !strings.Contains(err.Error(), "task get request failed") {
+		t.Errorf("error should mention task get request failed: %v", err)
+	}
+}
+
+// TestClient_GetTask_DecodeError verifies that GetTask returns an error
+// when the response body is not valid JSON.
+func TestClient_GetTask_DecodeError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/tasks/task-001", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{not valid}`)
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	_, err := c.GetTask(context.Background(), &a2a.GetTaskRequest{
+		ID: a2a.TaskID("task-001"),
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid JSON response")
+	}
+	if !strings.Contains(err.Error(), "failed to decode task response") {
+		t.Errorf("error should mention decode failure: %v", err)
+	}
+}
+
+// TestClient_CancelTask_TokenError verifies that CancelTask returns an error
+// when the token function fails.
+func TestClient_CancelTask_TokenError(t *testing.T) {
+	c, server := newFailingTokenClient(t, http.NewServeMux())
+	defer server.Close()
+
+	_, err := c.CancelTask(context.Background(), &a2a.CancelTaskRequest{
+		ID: a2a.TaskID("task-001"),
+	})
+	if err == nil {
+		t.Fatal("expected error for token failure")
+	}
+	if !strings.Contains(err.Error(), "access token") {
+		t.Errorf("error should mention access token: %v", err)
+	}
+}
+
+// TestClient_CancelTask_DoError verifies that CancelTask returns an error
+// when the HTTP request fails (e.g. cancelled context).
+func TestClient_CancelTask_DoError(t *testing.T) {
+	c, server := newTestClient(t, http.NewServeMux())
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := c.CancelTask(ctx, &a2a.CancelTaskRequest{
+		ID: a2a.TaskID("task-001"),
+	})
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+	if !strings.Contains(err.Error(), "task cancel request failed") {
+		t.Errorf("error should mention task cancel request failed: %v", err)
+	}
+}
+
+// TestClient_CancelTask_DecodeError verifies that CancelTask returns an error
+// when the response body is not valid JSON.
+func TestClient_CancelTask_DecodeError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/tasks/task-001:cancel", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{not valid}`)
+	})
+
+	c, server := newTestClient(t, mux)
+	defer server.Close()
+
+	_, err := c.CancelTask(context.Background(), &a2a.CancelTaskRequest{
+		ID: a2a.TaskID("task-001"),
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid JSON response")
+	}
+	if !strings.Contains(err.Error(), "failed to decode cancel response") {
+		t.Errorf("error should mention decode failure: %v", err)
+	}
+}
+
+// TestClient_SendMessage_MarshalError verifies that SendMessage returns an
+// error when the request body cannot be marshalled to JSON (e.g. a Part
+// with un-serializable metadata).
+func TestClient_SendMessage_MarshalError(t *testing.T) {
+	c, server := newTestClient(t, http.NewServeMux())
+	defer server.Close()
+
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "msg-001"
+	// Inject an un-serializable value into a Part's Metadata.
+	msg.Parts[0].SetMeta("bad", make(chan int))
+
+	_, err := c.SendMessage(context.Background(), &a2a.SendMessageRequest{Message: msg})
+	if err == nil {
+		t.Fatal("expected error for un-marshallable request")
+	}
+	if !strings.Contains(err.Error(), "failed to marshal request") {
+		t.Errorf("error should mention marshal failure: %v", err)
+	}
+}
+
+// TestClient_SendStreamingMessage_MarshalError verifies that
+// SendStreamingMessage yields an error when the request body cannot be
+// marshalled to JSON.
+func TestClient_SendStreamingMessage_MarshalError(t *testing.T) {
+	c, server := newTestClient(t, http.NewServeMux())
+	defer server.Close()
+
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "msg-001"
+	// Inject an un-serializable value into a Part's Metadata.
+	msg.Parts[0].SetMeta("bad", make(chan int))
+
+	var gotErr error
+	for _, err := range c.SendStreamingMessage(context.Background(), &a2a.SendMessageRequest{Message: msg}) {
+		if err != nil {
+			gotErr = err
+			break
+		}
+	}
+
+	if gotErr == nil {
+		t.Fatal("expected error for un-marshallable request")
+	}
+	if !strings.Contains(gotErr.Error(), "failed to marshal request") {
+		t.Errorf("error should mention marshal failure: %v", gotErr)
+	}
+}
+
+// TestClient_NewRequest_InvalidURL verifies that newRequest returns an error
+// when given an invalid URL (e.g. containing control characters).
+func TestClient_NewRequest_InvalidURL(t *testing.T) {
+	ep := &Endpoint{base: "https://example.com"}
+	c := NewClient(ep, func() (string, error) {
+		return "test-token", nil
+	})
+
+	_, err := c.newRequest(context.Background(), http.MethodGet, "http://example.com/path\x00invalid", nil)
+	if err == nil {
+		t.Fatal("expected error for invalid URL")
+	}
+	if !strings.Contains(err.Error(), "failed to create request") {
+		t.Errorf("error should mention failed to create request: %v", err)
+	}
+}
+
+// TestClient_FetchCard_ReadBodyError verifies that FetchCard returns an error
+// when io.ReadAll on the response body fails. We inject a broken reader via
+// a custom http.Transport RoundTripper.
+func TestClient_FetchCard_ReadBodyError(t *testing.T) {
+	ep := &Endpoint{base: "https://example.com"}
+	c := NewClient(ep, func() (string, error) {
+		return "test-token", nil
+	})
+	c.httpClient = &http.Client{
+		Transport: &brokenBodyTransport{
+			statusCode: http.StatusOK,
+			errAfter:   5,
+		},
+	}
+
+	_, err := c.FetchCard(context.Background())
+	if err == nil {
+		t.Fatal("expected error when body read fails")
+	}
+	if !strings.Contains(err.Error(), "failed to read agent card response") {
+		t.Errorf("error should mention read failure: %v", err)
+	}
+}
+
+// TestClient_SendStreamingMessage_ScannerError verifies that
+// SendStreamingMessage yields a "stream read error" when the underlying
+// reader returns an error mid-stream.
+func TestClient_SendStreamingMessage_ScannerError(t *testing.T) {
+	ep := &Endpoint{base: "https://example.com"}
+	c := NewClient(ep, func() (string, error) {
+		return "test-token", nil
+	})
+	c.card = &a2a.AgentCard{
+		SupportedInterfaces: []*a2a.AgentInterface{
+			{URL: "https://example.com/a2a/v1"},
+		},
+	}
+	c.httpClient = &http.Client{
+		Transport: &brokenBodyTransport{
+			statusCode: http.StatusOK,
+			// Return a partial SSE body then error. The data line is not
+			// terminated by a blank line, so the scanner will read it then
+			// encounter the error on the next Scan().
+			prefix:   "data: partial",
+			errAfter: len("data: partial"),
+		},
+	}
+
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "msg-test"
+
+	var gotErr error
+	for _, err := range c.SendStreamingMessage(context.Background(), &a2a.SendMessageRequest{Message: msg}) {
+		if err != nil {
+			gotErr = err
+			break
+		}
+	}
+
+	if gotErr == nil {
+		t.Fatal("expected error from scanner")
+	}
+	if !strings.Contains(gotErr.Error(), "stream read error") {
+		t.Errorf("error should mention stream read error: %v", gotErr)
+	}
+}
+
+// brokenBodyTransport is an http.RoundTripper that returns a response whose
+// Body reader returns an error after reading errAfter bytes. If prefix is
+// set, those bytes are returned first before the error.
+type brokenBodyTransport struct {
+	statusCode int
+	prefix     string
+	errAfter   int
+}
+
+func (t *brokenBodyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: t.statusCode,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       &brokenReader{data: []byte(t.prefix), errAfter: t.errAfter},
+	}, nil
+}
+
+// brokenReader returns the prefix data, then an error on the next Read.
+type brokenReader struct {
+	data     []byte
+	pos      int
+	errAfter int
+	done     bool
+}
+
+func (r *brokenReader) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, fmt.Errorf("simulated read error")
+	}
+	remaining := r.data[r.pos:]
+	if len(remaining) == 0 {
+		r.done = true
+		return 0, fmt.Errorf("simulated read error")
+	}
+	n := copy(p, remaining)
+	r.pos += n
+	if r.pos >= len(r.data) {
+		r.done = true
+	}
+	return n, nil
+}
+
+func (r *brokenReader) Close() error { return nil }
+
 func TestClient_SendStreamingMessage_StreamRequestBody(t *testing.T) {
 	var captured sendRequest
 	mux := http.NewServeMux()

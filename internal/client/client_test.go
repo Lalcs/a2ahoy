@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Lalcs/a2ahoy/internal/auth"
+	"github.com/Lalcs/a2ahoy/internal/vertexai"
 	"github.com/a2aproject/a2a-go/v2/a2a"
+	"golang.org/x/oauth2"
 )
 
 // v1CardJSON returns a minimal A2A spec v1.0 agent card JSON pointing at the
@@ -695,5 +699,452 @@ func TestResolveCard_WithBearerToken_EmptyTokenIgnored(t *testing.T) {
 
 	if got := captured.Get("Authorization"); got != "" {
 		t.Errorf("Authorization should be empty, got %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VertexAI path tests
+// ---------------------------------------------------------------------------
+
+// invalidCredFile creates a temporary file with invalid JSON content and
+// sets GOOGLE_APPLICATION_CREDENTIALS to it so GCP credential lookups fail
+// deterministically.
+func invalidCredFile(t *testing.T) {
+	t.Helper()
+	tmp := filepath.Join(t.TempDir(), "bad-creds.json")
+	if err := os.WriteFile(tmp, []byte("not-json"), 0o644); err != nil {
+		t.Fatalf("write bad creds: %v", err)
+	}
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", tmp)
+}
+
+func TestNew_VertexAI_ParseEndpointError(t *testing.T) {
+	invalidCredFile(t)
+	ctx := context.Background()
+	_, _, err := New(ctx, Options{
+		BaseURL:  "", // empty → ParseEndpoint error
+		VertexAI: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for empty VertexAI URL")
+	}
+}
+
+func TestNew_VertexAI_AuthError(t *testing.T) {
+	invalidCredFile(t)
+	ctx := context.Background()
+	_, _, err := New(ctx, Options{
+		BaseURL:  "https://us-central1-aiplatform.googleapis.com/v1/projects/1/locations/us-central1/reasoningEngines/1",
+		VertexAI: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid GCP credentials")
+	}
+}
+
+func TestResolveCard_VertexAI_ParseEndpointError(t *testing.T) {
+	invalidCredFile(t)
+	ctx := context.Background()
+	_, err := ResolveCard(ctx, Options{
+		BaseURL:  "",
+		VertexAI: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for empty VertexAI URL")
+	}
+}
+
+func TestResolveCard_VertexAI_AuthError(t *testing.T) {
+	invalidCredFile(t)
+	ctx := context.Background()
+	_, err := ResolveCard(ctx, Options{
+		BaseURL:  "https://us-central1-aiplatform.googleapis.com/v1/projects/1/locations/us-central1/reasoningEngines/1",
+		VertexAI: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid GCP credentials")
+	}
+}
+
+func TestNew_GCPAuth_Error(t *testing.T) {
+	invalidCredFile(t)
+	ctx := context.Background()
+	_, _, err := New(ctx, Options{
+		BaseURL: "http://example.com",
+		GCPAuth: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for GCP auth failure")
+	}
+}
+
+func TestResolveCard_GCPAuth_Error(t *testing.T) {
+	invalidCredFile(t)
+	ctx := context.Background()
+	_, err := ResolveCard(ctx, Options{
+		BaseURL: "http://example.com",
+		GCPAuth: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for GCP auth failure")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// applyVertexAIHeaders tests
+// ---------------------------------------------------------------------------
+
+func TestApplyVertexAIHeaders_Empty(t *testing.T) {
+	ep, _ := vertexai.ParseEndpoint("https://example.com/v1beta1/projects/1/locations/us/reasoningEngines/1")
+	vc := vertexai.NewClient(ep, func() (string, error) { return "tok", nil })
+
+	// Empty headers → no-op, no error.
+	if err := applyVertexAIHeaders(vc, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := applyVertexAIHeaders(vc, []string{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestApplyVertexAIHeaders_Valid(t *testing.T) {
+	ep, _ := vertexai.ParseEndpoint("https://example.com/v1beta1/projects/1/locations/us/reasoningEngines/1")
+	vc := vertexai.NewClient(ep, func() (string, error) { return "tok", nil })
+
+	if err := applyVertexAIHeaders(vc, []string{"X-Custom=val"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestApplyVertexAIHeaders_InvalidEntry(t *testing.T) {
+	ep, _ := vertexai.ParseEndpoint("https://example.com/v1beta1/projects/1/locations/us/reasoningEngines/1")
+	vc := vertexai.NewClient(ep, func() (string, error) { return "tok", nil })
+
+	err := applyVertexAIHeaders(vc, []string{"no-equals"})
+	if err == nil {
+		t.Fatal("expected error for invalid header entry")
+	}
+	if !errors.Is(err, auth.ErrInvalidHeader) {
+		t.Errorf("expected ErrInvalidHeader, got: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// appendBearerResolveOpts edge case
+// ---------------------------------------------------------------------------
+
+func TestAppendBearerResolveOpts_NonEmpty(t *testing.T) {
+	opts := appendBearerResolveOpts(nil, "my-token")
+	if len(opts) != 1 {
+		t.Fatalf("expected 1 option, got %d", len(opts))
+	}
+}
+
+func TestAppendBearerResolveOpts_Empty(t *testing.T) {
+	opts := appendBearerResolveOpts(nil, "")
+	if len(opts) != 0 {
+		t.Fatalf("expected 0 options for empty token, got %d", len(opts))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VertexAI success path tests (inject mock GCP interceptor)
+// ---------------------------------------------------------------------------
+
+// staticTokenSource is a simple oauth2.TokenSource that always returns the
+// given access token string.
+type staticTokenSource string
+
+func (s staticTokenSource) Token() (*oauth2.Token, error) {
+	return &oauth2.Token{AccessToken: string(s)}, nil
+}
+
+// withMockGCPAccessToken overrides the GCP access-token interceptor factory
+// with one that returns a fake interceptor backed by the given token.
+// The original factory is restored via t.Cleanup.
+func withMockGCPAccessToken(t *testing.T, token string) {
+	t.Helper()
+	orig := newGCPAccessTokenInterceptorFn
+	t.Cleanup(func() { newGCPAccessTokenInterceptorFn = orig })
+	newGCPAccessTokenInterceptorFn = func(ctx context.Context) (*auth.GCPAccessTokenInterceptor, error) {
+		return auth.NewGCPAccessTokenInterceptorFromSource(staticTokenSource(token)), nil
+	}
+}
+
+// withMockGCPAuth overrides the GCP ID-token interceptor factory with one
+// that returns a fake interceptor backed by the given token.
+func withMockGCPAuth(t *testing.T, token string) {
+	t.Helper()
+	orig := newGCPAuthInterceptorFn
+	t.Cleanup(func() { newGCPAuthInterceptorFn = orig })
+	newGCPAuthInterceptorFn = func(ctx context.Context, audience string) (*auth.GCPAuthInterceptor, error) {
+		return auth.NewGCPAuthInterceptorFromSource(staticTokenSource(token)), nil
+	}
+}
+
+// vertexAICardServer returns an httptest server that serves a v0.3-format
+// agent card at /a2a/v1/card.
+func vertexAICardServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	var ts *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{
+			"protocolVersion": "0.3.0",
+			"name": "Test VertexAI Agent",
+			"description": "test",
+			"version": "1.0",
+			"url": %q,
+			"preferredTransport": "HTTP+JSON",
+			"capabilities": {},
+			"defaultInputModes": ["text/plain"],
+			"defaultOutputModes": ["text/plain"],
+			"skills": []
+		}`, ts.URL+"/a2a/v1")
+	})
+	ts = httptest.NewServer(mux)
+	return ts
+}
+
+func TestNew_VertexAI_Success(t *testing.T) {
+	ts := vertexAICardServer(t)
+	defer ts.Close()
+
+	withMockGCPAccessToken(t, "fake-access-token")
+
+	ctx := context.Background()
+	client, card, err := New(ctx, Options{
+		BaseURL:  ts.URL,
+		VertexAI: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer client.Destroy()
+
+	if card.Name != "Test VertexAI Agent" {
+		t.Errorf("card name: got %q, want %q", card.Name, "Test VertexAI Agent")
+	}
+}
+
+func TestNew_VertexAI_V03RESTMount(t *testing.T) {
+	ts := vertexAICardServer(t)
+	defer ts.Close()
+
+	withMockGCPAccessToken(t, "fake-access-token")
+
+	ctx := context.Background()
+	_, card, err := New(ctx, Options{
+		BaseURL:      ts.URL,
+		VertexAI:     true,
+		V03RESTMount: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(card.SupportedInterfaces) == 0 {
+		t.Fatal("expected at least one interface")
+	}
+	// Card URL already ends with /v1, so rewrite is idempotent.
+	got := card.SupportedInterfaces[0].URL
+	if got != ts.URL+"/a2a/v1" {
+		t.Errorf("URL after V03RESTMount: got %q, want %q", got, ts.URL+"/a2a/v1")
+	}
+}
+
+func TestNew_VertexAI_FetchCardError(t *testing.T) {
+	// Server that returns 500 for card
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	withMockGCPAccessToken(t, "fake-access-token")
+
+	ctx := context.Background()
+	_, _, err := New(ctx, Options{
+		BaseURL:  ts.URL,
+		VertexAI: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for FetchCard failure")
+	}
+}
+
+func TestNew_VertexAI_HeaderError(t *testing.T) {
+	withMockGCPAccessToken(t, "fake-access-token")
+
+	ctx := context.Background()
+	_, _, err := New(ctx, Options{
+		BaseURL:  "https://us-central1-aiplatform.googleapis.com/v1/projects/1/locations/us/reasoningEngines/1",
+		VertexAI: true,
+		Headers:  []string{"no-equals"},
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid headers")
+	}
+}
+
+func TestResolveCard_VertexAI_Success(t *testing.T) {
+	ts := vertexAICardServer(t)
+	defer ts.Close()
+
+	withMockGCPAccessToken(t, "fake-access-token")
+
+	ctx := context.Background()
+	card, err := ResolveCard(ctx, Options{
+		BaseURL:  ts.URL,
+		VertexAI: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card.Name != "Test VertexAI Agent" {
+		t.Errorf("card name: got %q, want %q", card.Name, "Test VertexAI Agent")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GCPAuth success path tests (inject mock GCP interceptor)
+// ---------------------------------------------------------------------------
+
+func TestNew_GCPAuth_Success(t *testing.T) {
+	var captured http.Header
+	ts := newHeaderCaptureServer(t, v1CardJSON, &captured)
+	defer ts.Close()
+
+	withMockGCPAuth(t, "fake-id-token")
+
+	ctx := context.Background()
+	client, card, err := New(ctx, Options{
+		BaseURL: ts.URL,
+		GCPAuth: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer client.Destroy()
+
+	if card.Name != "Test v1 Agent" {
+		t.Errorf("card name: got %q, want %q", card.Name, "Test v1 Agent")
+	}
+	// Verify the Bearer token was sent for card resolution
+	if got := captured.Get("Authorization"); got != "Bearer fake-id-token" {
+		t.Errorf("Authorization: got %q, want %q", got, "Bearer fake-id-token")
+	}
+}
+
+func TestResolveCard_GCPAuth_Success(t *testing.T) {
+	var captured http.Header
+	ts := newHeaderCaptureServer(t, v1CardJSON, &captured)
+	defer ts.Close()
+
+	withMockGCPAuth(t, "fake-id-token")
+
+	ctx := context.Background()
+	card, err := ResolveCard(ctx, Options{
+		BaseURL: ts.URL,
+		GCPAuth: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card.Name != "Test v1 Agent" {
+		t.Errorf("card name: got %q, want %q", card.Name, "Test v1 Agent")
+	}
+}
+
+// failingTokenSource is an oauth2.TokenSource that always fails, used to
+// test the GetToken error path after interceptor construction succeeds.
+type failingTokenSource struct{}
+
+func (failingTokenSource) Token() (*oauth2.Token, error) {
+	return nil, fmt.Errorf("token refresh failed")
+}
+
+func TestNew_GCPAuth_GetTokenError(t *testing.T) {
+	ts := newCardServer(t, v1CardJSON)
+	defer ts.Close()
+
+	orig := newGCPAuthInterceptorFn
+	t.Cleanup(func() { newGCPAuthInterceptorFn = orig })
+	newGCPAuthInterceptorFn = func(ctx context.Context, audience string) (*auth.GCPAuthInterceptor, error) {
+		return auth.NewGCPAuthInterceptorFromSource(failingTokenSource{}), nil
+	}
+
+	ctx := context.Background()
+	_, _, err := New(ctx, Options{
+		BaseURL: ts.URL,
+		GCPAuth: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for GetToken failure")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// newStandard: NewFromCard error path
+// ---------------------------------------------------------------------------
+
+// TestNew_NewFromCardError exercises the error branch in newStandard where
+// a2aclient.NewFromCard fails. This is triggered when the resolved card
+// contains interfaces with an unknown/unsupported protocol binding that
+// none of the registered transports can handle.
+func TestNew_NewFromCardError(t *testing.T) {
+	// Serve a card whose only interface uses an unregistered protocol
+	// binding, so NewFromCard cannot find a suitable transport.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, fmt.Sprintf(`{
+			"name": "Unsupported Agent",
+			"description": "Agent with unsupported transport",
+			"version": "1.0",
+			"capabilities": {},
+			"defaultInputModes": ["text/plain"],
+			"defaultOutputModes": ["text/plain"],
+			"supportedInterfaces": [{
+				"url": %q,
+				"protocolBinding": "UNSUPPORTED_BINDING",
+				"protocolVersion": "99.0"
+			}],
+			"skills": []
+		}`, "http://localhost:1"))
+	}))
+	defer ts.Close()
+
+	ctx := context.Background()
+	_, _, err := New(ctx, Options{BaseURL: ts.URL})
+	if err == nil {
+		t.Fatal("expected error for unsupported transport in NewFromCard")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// resolveStandardCard: NewBearerTokenInterceptor error path
+// ---------------------------------------------------------------------------
+
+// TestNew_BearerTokenInterceptorError exercises the error path in
+// resolveStandardCard where newBearerTokenInterceptorFn fails. In
+// production this is unreachable because the guard (BearerToken != "")
+// prevents passing an empty token. This test uses the factory seam to
+// force a failure.
+func TestNew_BearerTokenInterceptorError(t *testing.T) {
+	orig := newBearerTokenInterceptorFn
+	t.Cleanup(func() { newBearerTokenInterceptorFn = orig })
+	newBearerTokenInterceptorFn = func(token string) (*auth.BearerTokenInterceptor, error) {
+		return nil, fmt.Errorf("injected bearer error")
+	}
+
+	ts := newCardServer(t, v1CardJSON)
+	defer ts.Close()
+
+	ctx := context.Background()
+	_, _, err := New(ctx, Options{
+		BaseURL:     ts.URL,
+		BearerToken: "some-token",
+	})
+	if err == nil {
+		t.Fatal("expected error for bearer token interceptor failure")
 	}
 }

@@ -1,6 +1,7 @@
 package vertexai
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -75,6 +76,17 @@ func TestParseEndpoint_MissingScheme(t *testing.T) {
 	_, err := ParseEndpoint("us-central1-aiplatform.googleapis.com/v1/projects/p/locations/l/reasoningEngines/123")
 	if err == nil {
 		t.Fatal("expected error for URL without scheme")
+	}
+}
+
+func TestParseEndpoint_URLParseError(t *testing.T) {
+	// A URL with a control character triggers url.Parse to return an error.
+	_, err := ParseEndpoint("https://example.com/\x00invalid")
+	if err == nil {
+		t.Fatal("expected error for URL with control characters")
+	}
+	if !strings.Contains(err.Error(), "invalid URL") {
+		t.Errorf("error should mention invalid URL: %v", err)
 	}
 }
 

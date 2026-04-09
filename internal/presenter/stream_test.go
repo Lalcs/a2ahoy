@@ -196,3 +196,19 @@ func TestPrintStreamEvent_ArtifactUpdate_NoNameNoAppend(t *testing.T) {
 		t.Errorf("missing content in output:\n%s", got)
 	}
 }
+
+func TestPrintStreamEventAny_UnknownType(t *testing.T) {
+	var buf bytes.Buffer
+	err := printStreamEventAny(&buf, "not a real event")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "[unknown event]") {
+		t.Errorf("missing unknown event marker in output:\n%s", got)
+	}
+	if !strings.Contains(got, "string") {
+		t.Errorf("missing type name in output:\n%s", got)
+	}
+}

@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/Lalcs/a2ahoy/internal/cardcheck"
 	"github.com/Lalcs/a2ahoy/internal/client"
@@ -47,18 +46,21 @@ func runCard(cmd *cobra.Command, args []string) error {
 	// non-zero so CI pipelines catch malformed cards.
 	result := cardcheck.Run(card)
 
+	out := cmd.OutOrStdout()
+	errOut := cmd.ErrOrStderr()
+
 	if flagJSON {
-		if err := presenter.PrintJSON(os.Stdout, card); err != nil {
+		if err := presenter.PrintJSON(out, card); err != nil {
 			return err
 		}
 		// stdout stays pure JSON for scripts; validation summary goes to
 		// stderr so pipelines like `a2ahoy card --json | jq` keep working.
-		presenter.PrintValidationSummary(os.Stderr, result)
+		presenter.PrintValidationSummary(errOut, result)
 	} else {
-		if err := presenter.PrintAgentCard(os.Stdout, card); err != nil {
-			return err
-		}
-		presenter.PrintValidation(os.Stdout, result)
+		// PrintAgentCard uses fmt.Fprintf internally and always returns
+		// nil, so the returned error is intentionally discarded.
+		_ = presenter.PrintAgentCard(out, card)
+		presenter.PrintValidation(out, result)
 	}
 
 	// Breaking change (user-approved): fail the command when the card has

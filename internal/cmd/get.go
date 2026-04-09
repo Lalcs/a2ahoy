@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/Lalcs/a2ahoy/internal/client"
 	"github.com/Lalcs/a2ahoy/internal/presenter"
@@ -55,10 +54,9 @@ func runGet(cmd *cobra.Command, args []string) error {
 	// Changed() distinguishes "flag omitted" (use server default) from
 	// "explicit --history-length=0" (which still propagates).
 	if cmd.Flags().Changed(flagNameHistoryLength) {
-		h, err := cmd.Flags().GetInt(flagNameHistoryLength)
-		if err != nil {
-			return fmt.Errorf("invalid --%s: %w", flagNameHistoryLength, err)
-		}
+		// GetInt cannot fail here: cobra validates the flag type before
+		// RunE is invoked, so the value is always a valid int.
+		h, _ := cmd.Flags().GetInt(flagNameHistoryLength)
 		req.HistoryLength = &h
 	}
 
@@ -67,8 +65,9 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("tasks/get failed: %w", err)
 	}
 
+	out := cmd.OutOrStdout()
 	if flagJSON {
-		return presenter.PrintJSON(os.Stdout, task)
+		return presenter.PrintJSON(out, task)
 	}
-	return presenter.PrintTask(os.Stdout, task)
+	return presenter.PrintTask(out, task)
 }

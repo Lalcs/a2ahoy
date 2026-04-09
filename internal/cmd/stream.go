@@ -20,12 +20,20 @@ var streamCmd = &cobra.Command{
 	RunE:  runStream,
 }
 
+// newStreamContext creates the cancellable context used by runStream.
+// Tests override this to inject a pre-cancelled or manually-cancellable
+// context so the SIGINT path can be exercised without sending a real OS
+// signal.
+var newStreamContext = func() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt)
+}
+
 func init() {
 	rootCmd.AddCommand(streamCmd)
 }
 
 func runStream(cmd *cobra.Command, args []string) error {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancel := newStreamContext()
 	defer cancel()
 
 	baseURL := args[0]
@@ -49,23 +57,26 @@ func runStream(cmd *cobra.Command, args []string) error {
 		Message: msg,
 	}
 
+	out := cmd.OutOrStdout()
+	errOut := cmd.ErrOrStderr()
+
 	for event, err := range a2aClient.SendStreamingMessage(ctx, req) {
 		if err != nil {
 			if ctx.Err() != nil {
-				fmt.Fprintln(os.Stderr, "\nInterrupted.")
+				fmt.Fprintln(errOut, "\nInterrupted.")
 				return nil
 			}
 			return fmt.Errorf("stream error: %w", err)
 		}
 
 		if flagJSON {
-			if err := presenter.PrintJSON(os.Stdout, event); err != nil {
+			if err := presenter.PrintJSON(out, event); err != nil {
 				return err
 			}
 		} else {
-			if err := presenter.PrintStreamEvent(os.Stdout, event); err != nil {
-				return err
-			}
+			// PrintStreamEvent uses fmt.Fprintf internally and always
+			// returns nil, so the returned error is intentionally discarded.
+			_ = presenter.PrintStreamEvent(out, event)
 		}
 	}
 

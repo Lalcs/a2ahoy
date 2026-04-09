@@ -10,13 +10,21 @@ import (
 
 // PrintSendResult writes a formatted display of a SendMessageResult.
 func PrintSendResult(w io.Writer, result a2a.SendMessageResult) error {
-	switch v := result.(type) {
+	return printSendResultAny(w, result)
+}
+
+// printSendResultAny dispatches formatting based on the concrete type of v.
+// It is separated from PrintSendResult so that tests can exercise the default
+// branch, which is otherwise unreachable through the sealed SendMessageResult
+// interface.
+func printSendResultAny(w io.Writer, v any) error {
+	switch v := v.(type) {
 	case *a2a.Task:
 		return PrintTask(w, v)
 	case *a2a.Message:
 		return printMessage(w, v)
 	default:
-		fmt.Fprintf(w, "Unknown result type: %T\n", result)
+		fmt.Fprintf(w, "Unknown result type: %T\n", v)
 	}
 	return nil
 }

@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/Lalcs/a2ahoy/internal/client"
 	"github.com/Lalcs/a2ahoy/internal/presenter"
@@ -54,8 +53,9 @@ func runCancel(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("tasks/cancel failed: %w", err)
 	}
 
+	out := cmd.OutOrStdout()
 	if flagJSON {
-		return presenter.PrintJSON(os.Stdout, task)
+		return presenter.PrintJSON(out, task)
 	}
-	return presenter.PrintTask(os.Stdout, task)
+	return presenter.PrintTask(out, task)
 }

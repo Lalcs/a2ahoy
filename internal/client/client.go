@@ -13,6 +13,16 @@ import (
 	"github.com/a2aproject/a2a-go/v2/a2acompat/a2av0"
 )
 
+// newGCPAuthInterceptorFn, newGCPAccessTokenInterceptorFn, and
+// newBearerTokenInterceptorFn are package-level factory functions that can be
+// overridden in tests. Production code uses the defaults (auth.NewGCP*,
+// auth.NewBearerTokenInterceptor).
+var (
+	newGCPAuthInterceptorFn        = auth.NewGCPAuthInterceptor
+	newGCPAccessTokenInterceptorFn = auth.NewGCPAccessTokenInterceptor
+	newBearerTokenInterceptorFn    = auth.NewBearerTokenInterceptor
+)
+
 // Options configures client creation.
 type Options struct {
 	BaseURL  string
@@ -74,7 +84,7 @@ func resolveVertexAICard(ctx context.Context, opts Options) (*vertexai.Client, *
 		return nil, nil, fmt.Errorf("invalid Vertex AI endpoint: %w", err)
 	}
 
-	interceptor, err := auth.NewGCPAccessTokenInterceptor(ctx)
+	interceptor, err := newGCPAccessTokenInterceptorFn(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("GCP access token auth setup failed: %w", err)
 	}
@@ -248,14 +258,14 @@ func resolveStandardCard(ctx context.Context, opts Options) (*a2a.AgentCard, []a
 	// deterministic behavior even if both fields are set; the CLI layer
 	// additionally enforces mutual exclusion.
 	if opts.BearerToken != "" {
-		interceptor, err := auth.NewBearerTokenInterceptor(opts.BearerToken)
+		interceptor, err := newBearerTokenInterceptorFn(opts.BearerToken)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create bearer token auth: %w", err)
 		}
 		resolveOpts = appendBearerResolveOpts(resolveOpts, opts.BearerToken)
 		clientOpts = append(clientOpts, a2aclient.WithCallInterceptors(interceptor))
 	} else if opts.GCPAuth {
-		interceptor, err := auth.NewGCPAuthInterceptor(ctx, opts.BaseURL)
+		interceptor, err := newGCPAuthInterceptorFn(ctx, opts.BaseURL)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create GCP auth: %w", err)
 		}

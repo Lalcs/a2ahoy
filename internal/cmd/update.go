@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/Lalcs/a2ahoy/internal/presenter"
 	"github.com/Lalcs/a2ahoy/internal/updater"
@@ -14,6 +13,17 @@ import (
 var (
 	flagUpdateCheckOnly bool
 	flagUpdateForce     bool
+)
+
+// makeUpdateFetcher, makeUpdateInstaller, and detectPlatform are
+// package-level factory / hook functions so that tests can substitute
+// fake implementations without touching the production code path.
+// The defaults wire up the real GitHub, filesystem, and runtime
+// implementations.
+var (
+	makeUpdateFetcher   = func() updater.Fetcher { return updater.NewGitHubFetcher() }
+	makeUpdateInstaller = func() *updater.Installer { return updater.NewInstaller() }
+	detectPlatform      = func() (updater.SupportedPlatform, error) { return updater.CurrentPlatform() }
 )
 
 var updateCmd = &cobra.Command{
@@ -43,17 +53,17 @@ func init() {
 
 func runUpdate(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	out := os.Stdout
+	out := cmd.OutOrStdout()
 
 	// Step 1: ensure the running platform is one we publish binaries for.
-	plat, err := updater.CurrentPlatform()
+	plat, err := detectPlatform()
 	if err != nil {
 		return err
 	}
 
 	// Step 2: contact GitHub for the latest release manifest.
 	presenter.PrintUpdateChecking(out)
-	fetcher := updater.NewGitHubFetcher()
+	fetcher := makeUpdateFetcher()
 	rel, err := fetcher.FetchLatestRelease(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to fetch latest release: %w", err)
@@ -91,7 +101,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// Step 6: prepare and run the install. Prepare validates filesystem
 	// access before any download starts so users see permission errors
 	// immediately rather than after waiting on a download.
-	installer := updater.NewInstaller()
+	installer := makeUpdateInstaller()
 	plan, err := installer.Prepare(asset, rel)
 	if err != nil {
 		return err
