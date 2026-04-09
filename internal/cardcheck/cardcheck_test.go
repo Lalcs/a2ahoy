@@ -108,8 +108,19 @@ func TestRun_NilCard(t *testing.T) {
 
 func TestRun_HealthyV1Card_NoIssues(t *testing.T) {
 	card := &a2a.AgentCard{
-		Name:    "HealthyAgent",
-		Version: "1.0.0",
+		Name:               "HealthyAgent",
+		Description:        "A test agent for validation.",
+		Version:            "1.0.0",
+		DefaultInputModes:  []string{"text/plain"},
+		DefaultOutputModes: []string{"text/plain"},
+		Skills: []a2a.AgentSkill{
+			{
+				ID:          "test-skill",
+				Name:        "Test Skill",
+				Description: "A skill for testing.",
+				Tags:        []string{"test"},
+			},
+		},
 		SupportedInterfaces: []*a2a.AgentInterface{
 			{
 				URL:             "https://example.com/a2a",
@@ -451,8 +462,9 @@ func TestCheckV03HTTPJSONMissingV1_MixedInterfaces(t *testing.T) {
 }
 
 func TestRun_Ordering(t *testing.T) {
-	// Card designed to trigger: 1 error (empty name), 1 warning (v0.3 /v1),
-	// and the empty-version warning.
+	// Card designed to trigger: 1 error (empty name), multiple warnings
+	// (empty version, empty description, empty modes, empty skills,
+	// v0.3 /v1 missing).
 	card := &a2a.AgentCard{
 		Name:    "", // EMPTY_NAME → error
 		Version: "", // EMPTY_VERSION → warning
@@ -484,8 +496,16 @@ func TestRun_Ordering(t *testing.T) {
 		}
 	}
 
-	// Specific codes should be present.
-	for _, want := range []string{"EMPTY_NAME", "EMPTY_VERSION", "V03_HTTPJSON_MISSING_V1"} {
+	// Specific codes should be present (original + newly added).
+	for _, want := range []string{
+		"EMPTY_NAME",
+		"EMPTY_VERSION",
+		"EMPTY_DESCRIPTION",
+		"EMPTY_DEFAULT_INPUT_MODES",
+		"EMPTY_DEFAULT_OUTPUT_MODES",
+		"EMPTY_SKILLS",
+		"V03_HTTPJSON_MISSING_V1",
+	} {
 		if !hasCode(r, want) {
 			t.Errorf("expected issue code %q in Run output", want)
 		}
@@ -495,10 +515,17 @@ func TestRun_Ordering(t *testing.T) {
 func TestRun_V03HTTPJSONCard_Regression(t *testing.T) {
 	// Reproduce a typical Python a2a-sdk 0.3.x card that triggers the
 	// /v1 warning. This is the precise scenario the user originally
-	// asked about.
+	// asked about. All other required fields are populated so the only
+	// issue is the V03 /v1 warning.
 	card := &a2a.AgentCard{
-		Name:    "adk-agent",
-		Version: "0.1.0",
+		Name:               "adk-agent",
+		Description:        "An ADK agent",
+		Version:            "0.1.0",
+		DefaultInputModes:  []string{"text/plain"},
+		DefaultOutputModes: []string{"text/plain"},
+		Skills: []a2a.AgentSkill{
+			{ID: "echo", Name: "Echo", Description: "Echoes the input", Tags: []string{"echo"}},
+		},
 		SupportedInterfaces: []*a2a.AgentInterface{
 			{
 				URL:             "http://localhost:9999",
@@ -518,12 +545,9 @@ func TestRun_V03HTTPJSONCard_Regression(t *testing.T) {
 	if iss.Field != "supportedInterfaces[0].url" {
 		t.Errorf("expected field=supportedInterfaces[0].url, got %q", iss.Field)
 	}
-	// Healthy fields should not trigger other warnings.
-	if hasCode(r, "EMPTY_NAME") {
-		t.Error("unexpected EMPTY_NAME in regression scenario")
-	}
-	if hasCode(r, "EMPTY_VERSION") {
-		t.Error("unexpected EMPTY_VERSION in regression scenario")
+	// Only the V03 warning should be present; no other issues expected.
+	if len(r.Issues) != 1 {
+		t.Errorf("expected exactly 1 issue (V03_HTTPJSON_MISSING_V1), got %d: %+v", len(r.Issues), r.Issues)
 	}
 }
 
@@ -676,7 +700,7 @@ func TestCheckSkills_WhitespaceName(t *testing.T) {
 func TestCheckSkills_HealthySkill_NoIssue(t *testing.T) {
 	card := &a2a.AgentCard{
 		Skills: []a2a.AgentSkill{
-			{ID: "translate", Name: "Translate"},
+			{ID: "translate", Name: "Translate", Description: "Translates text"},
 		},
 	}
 	issues := checkSkills(card)
@@ -740,6 +764,232 @@ func TestCheckProtocolVersionRecognized(t *testing.T) {
 			}
 			if tt.want && len(issues) > 0 && issues[0].Level != LevelInfo {
 				t.Errorf("expected LevelInfo, got %v", issues[0].Level)
+			}
+		})
+	}
+}
+
+// -----------------------------------------------------------------------------
+// New check tests (A2AHOY-20)
+// -----------------------------------------------------------------------------
+
+func TestCheckRequiredFields(t *testing.T) {
+	tests := []struct {
+		name      string
+		card      *a2a.AgentCard
+		wantCodes []string
+	}{
+		{
+			name:      "all empty",
+			card:      &a2a.AgentCard{},
+			wantCodes: []string{"EMPTY_DESCRIPTION", "EMPTY_DEFAULT_INPUT_MODES", "EMPTY_DEFAULT_OUTPUT_MODES"},
+		},
+		{
+			name: "description empty only",
+			card: &a2a.AgentCard{
+				Description:        "",
+				DefaultInputModes:  []string{"text/plain"},
+				DefaultOutputModes: []string{"text/plain"},
+			},
+			wantCodes: []string{"EMPTY_DESCRIPTION"},
+		},
+		{
+			name: "whitespace description",
+			card: &a2a.AgentCard{
+				Description:        "   ",
+				DefaultInputModes:  []string{"text/plain"},
+				DefaultOutputModes: []string{"text/plain"},
+			},
+			wantCodes: []string{"EMPTY_DESCRIPTION"},
+		},
+		{
+			name: "defaultInputModes empty only",
+			card: &a2a.AgentCard{
+				Description:        "ok",
+				DefaultInputModes:  nil,
+				DefaultOutputModes: []string{"text/plain"},
+			},
+			wantCodes: []string{"EMPTY_DEFAULT_INPUT_MODES"},
+		},
+		{
+			name: "defaultOutputModes empty only",
+			card: &a2a.AgentCard{
+				Description:        "ok",
+				DefaultInputModes:  []string{"text/plain"},
+				DefaultOutputModes: []string{},
+			},
+			wantCodes: []string{"EMPTY_DEFAULT_OUTPUT_MODES"},
+		},
+		{
+			name: "all populated",
+			card: &a2a.AgentCard{
+				Description:        "A valid description",
+				DefaultInputModes:  []string{"text/plain"},
+				DefaultOutputModes: []string{"text/plain"},
+			},
+			wantCodes: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issues := checkRequiredFields(tt.card)
+			for _, code := range tt.wantCodes {
+				if !containsCode(issues, code) {
+					t.Errorf("expected %s, got %+v", code, issues)
+				}
+			}
+			if tt.wantCodes == nil && len(issues) != 0 {
+				t.Errorf("expected no issues, got %+v", issues)
+			}
+		})
+	}
+}
+
+func TestCheckSkillsEmpty(t *testing.T) {
+	tests := []struct {
+		name     string
+		card     *a2a.AgentCard
+		wantCode bool
+	}{
+		{"nil skills", &a2a.AgentCard{Skills: nil}, true},
+		{"empty slice", &a2a.AgentCard{Skills: []a2a.AgentSkill{}}, true},
+		{
+			"one skill present",
+			&a2a.AgentCard{Skills: []a2a.AgentSkill{{ID: "s1", Name: "S1", Description: "d"}}},
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issues := checkSkillsEmpty(tt.card)
+			got := containsCode(issues, "EMPTY_SKILLS")
+			if got != tt.wantCode {
+				t.Errorf("got %v, want %v; issues=%+v", got, tt.wantCode, issues)
+			}
+			if tt.wantCode && len(issues) > 0 && issues[0].Level != LevelWarning {
+				t.Errorf("expected Warning level, got %v", issues[0].Level)
+			}
+		})
+	}
+}
+
+func TestCheckInterfaces_EmptyProtocolBinding(t *testing.T) {
+	card := &a2a.AgentCard{
+		SupportedInterfaces: []*a2a.AgentInterface{
+			{
+				URL:             "https://example.com",
+				ProtocolBinding: "",
+				ProtocolVersion: "1.0",
+			},
+		},
+	}
+	issues := checkInterfaces(card)
+	if !containsCode(issues, "INTERFACE_EMPTY_PROTOCOL_BINDING") {
+		t.Errorf("expected INTERFACE_EMPTY_PROTOCOL_BINDING, got %+v", issues)
+	}
+	// Should NOT also fire INTERFACE_UNKNOWN_PROTOCOL_BINDING (mutually exclusive).
+	if containsCode(issues, "INTERFACE_UNKNOWN_PROTOCOL_BINDING") {
+		t.Errorf("unexpected INTERFACE_UNKNOWN_PROTOCOL_BINDING when binding is empty")
+	}
+}
+
+func TestCheckSkills_EmptyID(t *testing.T) {
+	card := &a2a.AgentCard{
+		Skills: []a2a.AgentSkill{
+			{ID: "", Name: "NoID", Description: "desc"},
+		},
+	}
+	issues := checkSkills(card)
+	if !containsCode(issues, "SKILL_EMPTY_ID") {
+		t.Errorf("expected SKILL_EMPTY_ID, got %+v", issues)
+	}
+}
+
+func TestCheckSkills_EmptyDescription(t *testing.T) {
+	card := &a2a.AgentCard{
+		Skills: []a2a.AgentSkill{
+			{ID: "s1", Name: "S1", Description: ""},
+		},
+	}
+	issues := checkSkills(card)
+	if !containsCode(issues, "SKILL_EMPTY_DESCRIPTION") {
+		t.Errorf("expected SKILL_EMPTY_DESCRIPTION, got %+v", issues)
+	}
+}
+
+func TestCheckSkills_EmptyName_NoID(t *testing.T) {
+	// SKILL_EMPTY_NAME should fire even when ID is also empty.
+	card := &a2a.AgentCard{
+		Skills: []a2a.AgentSkill{
+			{ID: "", Name: "", Description: "desc"},
+		},
+	}
+	issues := checkSkills(card)
+	if !containsCode(issues, "SKILL_EMPTY_NAME") {
+		t.Errorf("expected SKILL_EMPTY_NAME even without ID, got %+v", issues)
+	}
+	if !containsCode(issues, "SKILL_EMPTY_ID") {
+		t.Errorf("expected SKILL_EMPTY_ID, got %+v", issues)
+	}
+}
+
+func TestCheckProvider(t *testing.T) {
+	tests := []struct {
+		name      string
+		card      *a2a.AgentCard
+		wantCodes []string
+	}{
+		{
+			name:      "nil provider",
+			card:      &a2a.AgentCard{},
+			wantCodes: nil,
+		},
+		{
+			name: "both populated",
+			card: &a2a.AgentCard{
+				Provider: &a2a.AgentProvider{Org: "Acme", URL: "https://acme.com"},
+			},
+			wantCodes: nil,
+		},
+		{
+			name: "empty organization",
+			card: &a2a.AgentCard{
+				Provider: &a2a.AgentProvider{Org: "", URL: "https://acme.com"},
+			},
+			wantCodes: []string{"PROVIDER_EMPTY_ORGANIZATION"},
+		},
+		{
+			name: "empty url",
+			card: &a2a.AgentCard{
+				Provider: &a2a.AgentProvider{Org: "Acme", URL: ""},
+			},
+			wantCodes: []string{"PROVIDER_EMPTY_URL"},
+		},
+		{
+			name: "both empty",
+			card: &a2a.AgentCard{
+				Provider: &a2a.AgentProvider{Org: "", URL: ""},
+			},
+			wantCodes: []string{"PROVIDER_EMPTY_ORGANIZATION", "PROVIDER_EMPTY_URL"},
+		},
+		{
+			name: "whitespace organization",
+			card: &a2a.AgentCard{
+				Provider: &a2a.AgentProvider{Org: "   ", URL: "https://acme.com"},
+			},
+			wantCodes: []string{"PROVIDER_EMPTY_ORGANIZATION"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issues := checkProvider(tt.card)
+			for _, code := range tt.wantCodes {
+				if !containsCode(issues, code) {
+					t.Errorf("expected %s, got %+v", code, issues)
+				}
+			}
+			if tt.wantCodes == nil && len(issues) != 0 {
+				t.Errorf("expected no issues, got %+v", issues)
 			}
 		})
 	}

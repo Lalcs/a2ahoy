@@ -139,6 +139,8 @@ var allChecks = []func(*a2a.AgentCard) []Issue{
 	checkName,
 	checkVersion,
 	checkSupportedInterfacesEmpty,
+	checkRequiredFields,
+	checkSkillsEmpty,
 	checkInterfaces,
 	checkV03HTTPJSONMissingV1,
 
@@ -146,6 +148,7 @@ var allChecks = []func(*a2a.AgentCard) []Issue{
 	checkStreamingCapabilityHasTransport,
 	checkDuplicateInterfaceURLBinding,
 	checkSkills,
+	checkProvider,
 	checkProtocolVersionRecognized,
 }
 
@@ -238,6 +241,56 @@ func checkSupportedInterfacesEmpty(card *a2a.AgentCard) []Issue {
 	}}
 }
 
+// checkRequiredFields reports warnings for top-level AgentCard fields
+// that are required by the A2A v1.0 specification but missing or empty.
+// These fields do not break a2ahoy routing, so they are warnings rather
+// than errors, matching the precedent set by checkVersion / EMPTY_VERSION.
+func checkRequiredFields(card *a2a.AgentCard) []Issue {
+	var out []Issue
+	if strings.TrimSpace(card.Description) == "" {
+		out = append(out, Issue{
+			Level:   LevelWarning,
+			Code:    "EMPTY_DESCRIPTION",
+			Message: "agent card has no description; the spec requires a non-empty description.",
+			Field:   "description",
+		})
+	}
+	if len(card.DefaultInputModes) == 0 {
+		out = append(out, Issue{
+			Level:   LevelWarning,
+			Code:    "EMPTY_DEFAULT_INPUT_MODES",
+			Message: "agent card has no defaultInputModes; the spec requires at least one entry.",
+			Field:   "defaultInputModes",
+		})
+	}
+	if len(card.DefaultOutputModes) == 0 {
+		out = append(out, Issue{
+			Level:   LevelWarning,
+			Code:    "EMPTY_DEFAULT_OUTPUT_MODES",
+			Message: "agent card has no defaultOutputModes; the spec requires at least one entry.",
+			Field:   "defaultOutputModes",
+		})
+	}
+	return out
+}
+
+// checkSkillsEmpty reports a warning when the card has no skills at all.
+// The spec requires the skills field (no omitempty in the JSON tag), but
+// an agent with zero skills still functions — a2ahoy can still send
+// messages. Warning matches the severity of other spec-required-but-
+// not-functionally-breaking checks.
+func checkSkillsEmpty(card *a2a.AgentCard) []Issue {
+	if len(card.Skills) > 0 {
+		return nil
+	}
+	return []Issue{{
+		Level:   LevelWarning,
+		Code:    "EMPTY_SKILLS",
+		Message: "agent card has no skills; the spec requires at least one skill.",
+		Field:   "skills",
+	}}
+}
+
 // knownProtocolBindings lists the transport bindings registered in
 // a2a-go v2.1.0. Unrecognized values are allowed by the spec (custom
 // bindings are permitted) but a2ahoy cannot route against them.
@@ -293,7 +346,14 @@ func checkInterfaces(card *a2a.AgentCard) []Issue {
 			})
 		}
 
-		if iface.ProtocolBinding != "" && !knownProtocolBindings[iface.ProtocolBinding] {
+		if strings.TrimSpace(string(iface.ProtocolBinding)) == "" {
+			out = append(out, Issue{
+				Level:   LevelWarning,
+				Code:    "INTERFACE_EMPTY_PROTOCOL_BINDING",
+				Message: "interface has no protocolBinding; the spec requires one of JSONRPC, GRPC, or HTTP+JSON.",
+				Field:   prefix + ".protocolBinding",
+			})
+		} else if !knownProtocolBindings[iface.ProtocolBinding] {
 			out = append(out, Issue{
 				Level: LevelWarning,
 				Code:  "INTERFACE_UNKNOWN_PROTOCOL_BINDING",
@@ -399,38 +459,79 @@ func checkSkills(card *a2a.AgentCard) []Issue {
 	var out []Issue
 	seenID := make(map[string]int)
 	for i, skill := range card.Skills {
-		// SKILL_DUPLICATE_ID
+		prefix := fmt.Sprintf("skills[%d]", i)
+
+		if strings.TrimSpace(skill.ID) == "" {
+			out = append(out, Issue{
+				Level:   LevelWarning,
+				Code:    "SKILL_EMPTY_ID",
+				Message: fmt.Sprintf("%s has no id; the spec requires a non-empty id.", prefix),
+				Field:   prefix + ".id",
+			})
+		}
+
 		if skill.ID != "" {
 			if first, ok := seenID[skill.ID]; ok {
 				out = append(out, Issue{
 					Level: LevelWarning,
 					Code:  "SKILL_DUPLICATE_ID",
 					Message: fmt.Sprintf(
-						"skills[%d].id %q duplicates skills[%d].id.",
-						i, skill.ID, first,
+						"%s.id %q duplicates skills[%d].id.",
+						prefix, skill.ID, first,
 					),
-					Field: fmt.Sprintf("skills[%d].id", i),
+					Field: prefix + ".id",
 				})
 			} else {
 				seenID[skill.ID] = i
 			}
 		}
 
-		// SKILL_EMPTY_NAME: only flag when an ID is present (otherwise
-		// the skill is so broken we'd rather not double-report; the
-		// missing ID itself is a separate concern we don't currently
-		// check — a future check could cover it).
-		if skill.ID != "" && strings.TrimSpace(skill.Name) == "" {
+		if strings.TrimSpace(skill.Name) == "" {
 			out = append(out, Issue{
-				Level: LevelWarning,
-				Code:  "SKILL_EMPTY_NAME",
-				Message: fmt.Sprintf(
-					"skills[%d] has id %q but an empty name.",
-					i, skill.ID,
-				),
-				Field: fmt.Sprintf("skills[%d].name", i),
+				Level:   LevelWarning,
+				Code:    "SKILL_EMPTY_NAME",
+				Message: fmt.Sprintf("%s has an empty name; the spec requires a non-empty name.", prefix),
+				Field:   prefix + ".name",
 			})
 		}
+
+		if strings.TrimSpace(skill.Description) == "" {
+			out = append(out, Issue{
+				Level:   LevelWarning,
+				Code:    "SKILL_EMPTY_DESCRIPTION",
+				Message: fmt.Sprintf("%s has no description; the spec requires a non-empty description.", prefix),
+				Field:   prefix + ".description",
+			})
+		}
+	}
+	return out
+}
+
+// checkProvider validates the AgentProvider sub-object when present.
+// The provider field itself is optional (pointer with omitempty), so a
+// nil provider produces no issues. However, when a provider IS present,
+// both organization and url are required by the spec (no omitempty on
+// either field in a2a-go/v2).
+func checkProvider(card *a2a.AgentCard) []Issue {
+	if card.Provider == nil {
+		return nil
+	}
+	var out []Issue
+	if strings.TrimSpace(card.Provider.Org) == "" {
+		out = append(out, Issue{
+			Level:   LevelWarning,
+			Code:    "PROVIDER_EMPTY_ORGANIZATION",
+			Message: "provider is present but has no organization; the spec requires a non-empty organization.",
+			Field:   "provider.organization",
+		})
+	}
+	if strings.TrimSpace(card.Provider.URL) == "" {
+		out = append(out, Issue{
+			Level:   LevelWarning,
+			Code:    "PROVIDER_EMPTY_URL",
+			Message: "provider is present but has no url; the spec requires a non-empty url.",
+			Field:   "provider.url",
+		})
 	}
 	return out
 }
