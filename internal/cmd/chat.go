@@ -59,7 +59,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	// Load initial file parts from --file / --file-url flags. These
 	// are attached to the first chat turn only; subsequent turns are

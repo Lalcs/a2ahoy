@@ -30,8 +30,9 @@ test-cover: ## Run tests with coverage
 	$(GO) tool cover -html=$(BUILD_DIR)/coverage.out -o $(BUILD_DIR)/coverage.html
 
 .PHONY: lint
-lint: ## Run staticcheck (install: go install honnef.co/go/tools/cmd/staticcheck@latest)
+lint: ## Run staticcheck and errcheck
 	staticcheck ./...
+	errcheck ./...
 
 .PHONY: fmt
 fmt: ## Format code

@@ -107,7 +107,7 @@ func runPushSet(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	callbackURL, _ := cmd.Flags().GetString(flagNamePushURL)
 	pushID, _ := cmd.Flags().GetString(flagNamePushID)
@@ -157,7 +157,7 @@ func runPushGet(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	req := &a2a.GetTaskPushConfigRequest{
 		TaskID: a2a.TaskID(taskID),
@@ -185,7 +185,7 @@ func runPushList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	pageSize, _ := cmd.Flags().GetInt(flagNamePushPageSize)
 	pageToken, _ := cmd.Flags().GetString(flagNamePushPageToken)
@@ -218,7 +218,7 @@ func runPushDelete(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	req := &a2a.DeleteTaskPushConfigRequest{
 		TaskID: a2a.TaskID(taskID),

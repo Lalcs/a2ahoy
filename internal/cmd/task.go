@@ -101,7 +101,7 @@ func runTaskGet(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	req := &a2a.GetTaskRequest{
 		ID: a2a.TaskID(taskID),
@@ -136,7 +136,7 @@ func runTaskCancel(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	req := &a2a.CancelTaskRequest{
 		ID: a2a.TaskID(taskID),
@@ -162,7 +162,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	contextID, _ := cmd.Flags().GetString(flagNameListContextID)
 	status, _ := cmd.Flags().GetString(flagNameListStatus)

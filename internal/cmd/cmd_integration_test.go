@@ -124,7 +124,7 @@ func a2aTestServer(t *testing.T) *httptest.Server {
 	// Card endpoint.
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, v1CardJSON(ts.URL))
+		_, _ = fmt.Fprint(w, v1CardJSON(ts.URL))
 	})
 
 	// JSON-RPC endpoint at the root URL (matches supportedInterfaces URL).
@@ -155,7 +155,7 @@ func a2aTestServer(t *testing.T) *httptest.Server {
 		case "SendMessage":
 			w.Header().Set("Content-Type", "application/json")
 			result := taskResultJSON("task-send-1", "ctx-1", "TASK_STATE_COMPLETED")
-			w.Write(jsonRPCResponse(req.ID, result))
+			_, _ = w.Write(jsonRPCResponse(req.ID, result))
 
 		case "SendStreamingMessage":
 			// Return SSE events. Each SSE data line contains a full JSON-RPC
@@ -178,7 +178,7 @@ func a2aTestServer(t *testing.T) *httptest.Server {
 				}
 			}`)
 			line1 := jsonRPCResponse(req.ID, statusResult)
-			fmt.Fprintf(w, "data: %s\n\n", line1)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", line1)
 			flusher.Flush()
 
 			// Emit a final task event.
@@ -193,18 +193,18 @@ func a2aTestServer(t *testing.T) *httptest.Server {
 				}
 			}`)
 			line2 := jsonRPCResponse(req.ID, taskResult)
-			fmt.Fprintf(w, "data: %s\n\n", line2)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", line2)
 			flusher.Flush()
 
 		case "GetTask":
 			w.Header().Set("Content-Type", "application/json")
 			result := rawTaskJSON("task-get-1", "ctx-get", "TASK_STATE_COMPLETED")
-			w.Write(jsonRPCResponse(req.ID, result))
+			_, _ = w.Write(jsonRPCResponse(req.ID, result))
 
 		case "CancelTask":
 			w.Header().Set("Content-Type", "application/json")
 			result := rawTaskJSON("task-cancel-1", "ctx-cancel", "TASK_STATE_CANCELED")
-			w.Write(jsonRPCResponse(req.ID, result))
+			_, _ = w.Write(jsonRPCResponse(req.ID, result))
 
 		case "ListTasks":
 			w.Header().Set("Content-Type", "application/json")
@@ -217,7 +217,7 @@ func a2aTestServer(t *testing.T) *httptest.Server {
 				"pageSize": 50,
 				"nextPageToken": ""
 			}`)
-			w.Write(jsonRPCResponse(req.ID, result))
+			_, _ = w.Write(jsonRPCResponse(req.ID, result))
 
 		case "CreateTaskPushNotificationConfig":
 			w.Header().Set("Content-Type", "application/json")
@@ -229,7 +229,7 @@ func a2aTestServer(t *testing.T) *httptest.Server {
 					"token": "tok-123"
 				}
 			}`)
-			w.Write(jsonRPCResponse(req.ID, result))
+			_, _ = w.Write(jsonRPCResponse(req.ID, result))
 
 		case "GetTaskPushNotificationConfig":
 			w.Header().Set("Content-Type", "application/json")
@@ -241,7 +241,7 @@ func a2aTestServer(t *testing.T) *httptest.Server {
 					"authentication": {"scheme": "Bearer", "credentials": "secret"}
 				}
 			}`)
-			w.Write(jsonRPCResponse(req.ID, result))
+			_, _ = w.Write(jsonRPCResponse(req.ID, result))
 
 		case "ListTaskPushNotificationConfigs":
 			w.Header().Set("Content-Type", "application/json")
@@ -249,18 +249,18 @@ func a2aTestServer(t *testing.T) *httptest.Server {
 				{"taskId": "task-push-1", "config": {"id": "cfg-1", "url": "https://example.com/a"}},
 				{"taskId": "task-push-1", "config": {"id": "cfg-2", "url": "https://example.com/b"}}
 			]`)
-			w.Write(jsonRPCResponse(req.ID, result))
+			_, _ = w.Write(jsonRPCResponse(req.ID, result))
 
 		case "DeleteTaskPushNotificationConfig":
 			w.Header().Set("Content-Type", "application/json")
 			// DeleteTaskPushConfig returns nil on success; the JSON-RPC
 			// response wraps a null result.
-			w.Write(jsonRPCResponse(req.ID, json.RawMessage(`null`)))
+			_, _ = w.Write(jsonRPCResponse(req.ID, json.RawMessage(`null`)))
 
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			errResp := fmt.Sprintf(`{"jsonrpc":"2.0","id":%q,"error":{"code":-32601,"message":"method not found"}}`, req.ID)
-			w.Write([]byte(errResp))
+			_, _ = w.Write([]byte(errResp))
 		}
 	})
 
@@ -334,7 +334,7 @@ func TestRunCard_ValidationError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{
+		_, _ = fmt.Fprintf(w, `{
 			"name": "",
 			"description": "bad card",
 			"version": "1.0",
@@ -374,7 +374,7 @@ func TestRunCard_ValidationError_JSON(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{
+		_, _ = fmt.Fprintf(w, `{
 			"name": "",
 			"description": "bad card",
 			"version": "1.0",
@@ -454,16 +454,23 @@ func TestRunSend_ServerError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, v1CardJSON(ts.URL))
+		_, _ = fmt.Fprint(w, v1CardJSON(ts.URL))
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		var req struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(body, &req)
-		fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%q,"error":{"code":-32603,"message":"internal error"}}`, req.ID)
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%q,"error":{"code":-32603,"message":"internal error"}}`, req.ID)
 	})
 	ts = httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -530,19 +537,26 @@ func TestRunStream_ServerError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, v1CardJSON(ts.URL))
+		_, _ = fmt.Fprint(w, v1CardJSON(ts.URL))
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		var req struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(body, &req)
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 
 		w.Header().Set("Content-Type", "text/event-stream")
 		flusher, _ := w.(http.Flusher)
 		errResp := fmt.Sprintf(`{"jsonrpc":"2.0","id":%q,"error":{"code":-32603,"message":"stream error"}}`, req.ID)
-		fmt.Fprintf(w, "data: %s\n\n", errResp)
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", errResp)
 		flusher.Flush()
 	})
 	ts = httptest.NewServer(mux)
@@ -622,16 +636,23 @@ func TestRunTaskGet_ServerError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, v1CardJSON(ts.URL))
+		_, _ = fmt.Fprint(w, v1CardJSON(ts.URL))
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		var req struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(body, &req)
-		fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%q,"error":{"code":-32001,"message":"task not found"}}`, req.ID)
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%q,"error":{"code":-32001,"message":"task not found"}}`, req.ID)
 	})
 	ts = httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -697,16 +718,23 @@ func TestRunTaskCancel_ServerError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, v1CardJSON(ts.URL))
+		_, _ = fmt.Fprint(w, v1CardJSON(ts.URL))
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		var req struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(body, &req)
-		fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%q,"error":{"code":-32002,"message":"already completed"}}`, req.ID)
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%q,"error":{"code":-32002,"message":"already completed"}}`, req.ID)
 	})
 	ts = httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -857,16 +885,23 @@ func TestRunTaskList_ServerError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, v1CardJSON(ts.URL))
+		_, _ = fmt.Fprint(w, v1CardJSON(ts.URL))
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		var req struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(body, &req)
-		fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%q,"error":{"code":-32603,"message":"internal error"}}`, req.ID)
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%q,"error":{"code":-32603,"message":"internal error"}}`, req.ID)
 	})
 	ts = httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -905,7 +940,7 @@ func fakeAssetServer(t *testing.T) *httptest.Server {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		// Write a fake binary (just some bytes).
-		w.Write([]byte("#!/bin/sh\necho fake\n"))
+		_, _ = w.Write([]byte("#!/bin/sh\necho fake\n"))
 	}))
 	t.Cleanup(ts.Close)
 	return ts
@@ -1286,17 +1321,24 @@ func TestRunSend_WithHeaders(t *testing.T) {
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		receivedHeader = r.Header.Get("X-Custom")
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, v1CardJSON(ts.URL))
+		_, _ = fmt.Fprint(w, v1CardJSON(ts.URL))
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		var req struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(body, &req)
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		result := taskResultJSON("task-1", "ctx-1", "TASK_STATE_COMPLETED")
-		w.Write(jsonRPCResponse(req.ID, result))
+		_, _ = w.Write(jsonRPCResponse(req.ID, result))
 	})
 	ts = httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -1395,14 +1437,21 @@ func TestRunStream_Interrupted(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, v1CardJSON(ts.URL))
+		_, _ = fmt.Fprint(w, v1CardJSON(ts.URL))
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		var req struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(body, &req)
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 
 		w.Header().Set("Content-Type", "text/event-stream")
 		flusher, _ := w.(http.Flusher)
@@ -1415,7 +1464,7 @@ func TestRunStream_Interrupted(t *testing.T) {
 			}
 		}`)
 		line := jsonRPCResponse(req.ID, statusResult)
-		fmt.Fprintf(w, "data: %s\n\n", line)
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", line)
 		flusher.Flush()
 
 		// Signal that we sent the first event.

@@ -49,7 +49,7 @@ func TestClient_FetchCard(t *testing.T) {
 			t.Errorf("authorization: got %q, want %q", auth, "Bearer test-token")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(card)
+		_ = json.NewEncoder(w).Encode(card)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -68,7 +68,7 @@ func TestClient_FetchCard_Error(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprint(w, "not found")
+		_, _ = fmt.Fprint(w, "not found")
 	})
 
 	c, server := newTestClient(t, mux)
@@ -105,7 +105,7 @@ func TestClient_FetchCard_V03Format(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, cardJSON)
+		_, _ = fmt.Fprint(w, cardJSON)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -160,7 +160,7 @@ func TestClient_FetchCard_V03WithAdditionalInterfaces(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, cardJSON)
+		_, _ = fmt.Fprint(w, cardJSON)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -208,7 +208,7 @@ func TestClient_FetchCard_V03SupportsExtendedCard(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, cardJSON)
+		_, _ = fmt.Fprint(w, cardJSON)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -245,7 +245,7 @@ func TestClient_FetchCard_UpdatesBaseURL(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, cardJSON)
+		_, _ = fmt.Fprint(w, cardJSON)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -298,7 +298,7 @@ func TestClient_FetchCard_VertexAIFixture(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, cardJSON)
+		_, _ = fmt.Fprint(w, cardJSON)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -396,7 +396,7 @@ func TestClient_CardMutationReflectedInRequestURLs(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, cardJSON)
+		_, _ = fmt.Fprint(w, cardJSON)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -476,7 +476,7 @@ func TestClient_SendMessage(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -511,7 +511,7 @@ func TestClient_SendMessage_HTTPError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/a2a/v1/message:send", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error": "bad request"}`)
+		_, _ = fmt.Fprint(w, `{"error": "bad request"}`)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -558,7 +558,7 @@ func TestClient_SendStreamingMessage(t *testing.T) {
 
 		for _, evt := range events {
 			data, _ := json.Marshal(evt)
-			fmt.Fprintf(w, "data: %s\n\n", data)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 		}
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
@@ -626,7 +626,7 @@ func TestClient_FetchCard_WithExtraHeaders(t *testing.T) {
 	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
 		captured = r.Header.Clone()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(a2a.AgentCard{Name: "test-agent"})
+		_ = json.NewEncoder(w).Encode(a2a.AgentCard{Name: "test-agent"})
 	})
 
 	c, server := newTestClient(t, mux)
@@ -664,7 +664,7 @@ func TestClient_NewRequest_HeaderOverridesAuth(t *testing.T) {
 	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
 		captured = r.Header.Clone()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(a2a.AgentCard{Name: "test-agent"})
+		_ = json.NewEncoder(w).Encode(a2a.AgentCard{Name: "test-agent"})
 	})
 
 	c, server := newTestClient(t, mux)
@@ -698,7 +698,7 @@ func TestClient_GetTask(t *testing.T) {
 			Status:    wireStatus{State: "TASK_STATE_COMPLETED"},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -727,7 +727,7 @@ func TestClient_GetTask_HistoryLength(t *testing.T) {
 	mux.HandleFunc("/a2a/v1/tasks/task-001", func(w http.ResponseWriter, r *http.Request) {
 		gotQuery = r.URL.RawQuery
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(wireTask{ID: "task-001"})
+		_ = json.NewEncoder(w).Encode(wireTask{ID: "task-001"})
 	})
 
 	c, server := newTestClient(t, mux)
@@ -750,7 +750,7 @@ func TestClient_GetTask_Error(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/a2a/v1/tasks/missing", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprint(w, "task not found")
+		_, _ = fmt.Fprint(w, "task not found")
 	})
 
 	c, server := newTestClient(t, mux)
@@ -785,7 +785,7 @@ func TestClient_CancelTask(t *testing.T) {
 			Status:    wireStatus{State: "TASK_STATE_CANCELED"},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -812,7 +812,7 @@ func TestClient_CancelTask_Error(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/a2a/v1/tasks/missing:cancel", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "FAILED_PRECONDITION: TASK_NOT_CANCELABLE")
+		_, _ = fmt.Fprint(w, "FAILED_PRECONDITION: TASK_NOT_CANCELABLE")
 	})
 
 	c, server := newTestClient(t, mux)
@@ -1098,7 +1098,7 @@ func TestClient_FetchCard_DecodeError(t *testing.T) {
 	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{not valid json`)
+		_, _ = fmt.Fprint(w, `{not valid json`)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -1171,7 +1171,7 @@ func TestClient_SendMessage_DecodeError(t *testing.T) {
 	mux.HandleFunc("/a2a/v1/message:send", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{not valid}`)
+		_, _ = fmt.Fprint(w, `{not valid}`)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -1218,7 +1218,7 @@ func TestClient_SendStreamingMessage_HTTPError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/a2a/v1/message:stream", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, "internal error")
+		_, _ = fmt.Fprint(w, "internal error")
 	})
 
 	c, server := newTestClient(t, mux)
@@ -1377,7 +1377,7 @@ func TestClient_GetTask_DecodeError(t *testing.T) {
 	mux.HandleFunc("/a2a/v1/tasks/task-001", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{not valid}`)
+		_, _ = fmt.Fprint(w, `{not valid}`)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -1438,7 +1438,7 @@ func TestClient_CancelTask_DecodeError(t *testing.T) {
 	mux.HandleFunc("/a2a/v1/tasks/task-001:cancel", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{not valid}`)
+		_, _ = fmt.Fprint(w, `{not valid}`)
 	})
 
 	c, server := newTestClient(t, mux)
@@ -1641,7 +1641,7 @@ func TestClient_SendStreamingMessage_StreamRequestBody(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `data: {"task":{"id":"t"}}`+"\n\n")
+		_, _ = fmt.Fprint(w, `data: {"task":{"id":"t"}}`+"\n\n")
 	})
 
 	c, server := newTestClient(t, mux)

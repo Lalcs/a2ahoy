@@ -64,7 +64,7 @@ func newCardServer(t *testing.T, cardBody func(url string) string) *httptest.Ser
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, cardBody(ts.URL))
+		_, _ = fmt.Fprint(w, cardBody(ts.URL))
 	})
 	ts = httptest.NewServer(mux)
 	return ts
@@ -82,7 +82,7 @@ func TestNew_WithoutGCPAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	if card.Name != "Test v1 Agent" {
 		t.Errorf("got card name %q, want %q", card.Name, "Test v1 Agent")
@@ -125,7 +125,7 @@ func TestNew_CardResolutionFailure(t *testing.T) {
 func TestNew_InvalidCardJSON(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{invalid json`))
+		_, _ = w.Write([]byte(`{invalid json`))
 	}))
 	defer ts.Close()
 
@@ -159,7 +159,7 @@ func TestNew_V03Format_Regression(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error (regression A2AHOY-1): %v", err)
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	if card.Name != "Test v0.3 Agent" {
 		t.Errorf("got card name %q, want %q", card.Name, "Test v0.3 Agent")
@@ -235,7 +235,7 @@ func TestResolveCard_CardResolutionFailure(t *testing.T) {
 func TestResolveCard_InvalidCardJSON(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{invalid json`))
+		_, _ = w.Write([]byte(`{invalid json`))
 	}))
 	defer ts.Close()
 
@@ -256,7 +256,7 @@ func newHeaderCaptureServer(t *testing.T, cardBody func(url string) string, capt
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		*captured = r.Header.Clone()
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, cardBody(ts.URL))
+		_, _ = fmt.Fprint(w, cardBody(ts.URL))
 	})
 	ts = httptest.NewServer(mux)
 	return ts
@@ -275,7 +275,7 @@ func TestNew_WithHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	if got := captured.Get("X-Tenant-Id"); got != "tenant-1" {
 		t.Errorf("X-Tenant-Id: got %q, want %q", got, "tenant-1")
@@ -351,7 +351,7 @@ func TestNew_WithBearerToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	if got := captured.Get("Authorization"); got != "Bearer test-bearer-token" {
 		t.Errorf("Authorization: got %q, want %q", got, "Bearer test-bearer-token")
@@ -371,7 +371,7 @@ func TestNew_WithBearerToken_EmptyTokenIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	// Empty BearerToken must be treated as "not set" and must not inject
 	// an Authorization header.
@@ -669,7 +669,7 @@ func TestNew_V03HTTPJSON_V03RESTMountGating(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			defer a2aClient.Destroy()
+			defer func() { _ = a2aClient.Destroy() }()
 
 			if len(card.SupportedInterfaces) == 0 {
 				t.Fatal("SupportedInterfaces must not be empty")
@@ -890,7 +890,7 @@ func vertexAICardServer(t *testing.T) *httptest.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/a2a/v1/card", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{
+		_, _ = fmt.Fprintf(w, `{
 			"protocolVersion": "0.3.0",
 			"name": "Test VertexAI Agent",
 			"description": "test",
@@ -921,7 +921,7 @@ func TestNew_VertexAI_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer client.Destroy()
+	defer func() { _ = client.Destroy() }()
 
 	if card.Name != "Test VertexAI Agent" {
 		t.Errorf("card name: got %q, want %q", card.Name, "Test VertexAI Agent")
@@ -1024,7 +1024,7 @@ func TestNew_GCPAuth_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer client.Destroy()
+	defer func() { _ = client.Destroy() }()
 
 	if card.Name != "Test v1 Agent" {
 		t.Errorf("card name: got %q, want %q", card.Name, "Test v1 Agent")
@@ -1096,7 +1096,7 @@ func TestNew_NewFromCardError(t *testing.T) {
 	// binding, so NewFromCard cannot find a suitable transport.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, fmt.Sprintf(`{
+		_, _ = fmt.Fprint(w, fmt.Sprintf(`{
 			"name": "Unsupported Agent",
 			"description": "Agent with unsupported transport",
 			"version": "1.0",

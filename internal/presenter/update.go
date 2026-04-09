@@ -11,43 +11,43 @@ import (
 // release manifest from GitHub. It is printed before the network call so
 // users see immediate feedback.
 func PrintUpdateChecking(w io.Writer) {
-	fmt.Fprintf(w, "%s Checking latest release on GitHub...\n", styledTag("[update]"))
+	_, _ = fmt.Fprintf(w, "%s Checking latest release on GitHub...\n", styledTag("[update]"))
 }
 
 // PrintUpdateDecision shows the result of comparing the running version to
 // the latest release. The action is colour-coded according to its severity.
 func PrintUpdateDecision(w io.Writer, d updater.Decision) {
-	fmt.Fprintf(w, "%s\n", styledHeader("=== Update ==="))
-	fmt.Fprintf(w, "%s %s\n", styledLabel("Current:"), d.Current)
-	fmt.Fprintf(w, "%s %s\n", styledLabel("Latest: "), d.Latest)
-	fmt.Fprintf(w, "%s %s\n", styledLabel("Status: "), styledUpdateAction(d.Action))
+	_, _ = fmt.Fprintf(w, "%s\n", styledHeader("=== Update ==="))
+	_, _ = fmt.Fprintf(w, "%s %s\n", styledLabel("Current:"), d.Current)
+	_, _ = fmt.Fprintf(w, "%s %s\n", styledLabel("Latest: "), d.Latest)
+	_, _ = fmt.Fprintf(w, "%s %s\n", styledLabel("Status: "), styledUpdateAction(d.Action))
 }
 
 // PrintUpdateAlreadyLatest is shown after a comparison that resulted in
 // ActionUpToDate. It tells the user nothing further will happen.
 func PrintUpdateAlreadyLatest(w io.Writer, current string) {
-	fmt.Fprintf(w, "%s Already up to date (%s).\n", styledTag("[update]"), current)
+	_, _ = fmt.Fprintf(w, "%s Already up to date (%s).\n", styledTag("[update]"), current)
 }
 
 // PrintUpdateAhead is shown when the running binary is newer than the
 // latest published release (e.g. a developer rebuild).
 func PrintUpdateAhead(w io.Writer, current, latest string) {
-	fmt.Fprintf(w, "%s Current version %s is ahead of latest release %s. Nothing to do.\n",
+	_, _ = fmt.Fprintf(w, "%s Current version %s is ahead of latest release %s. Nothing to do.\n",
 		styledTag("[update]"), current, latest)
 }
 
 // PrintUpdateAvailable is shown for --check-only when an update exists,
 // telling the user how to install it.
 func PrintUpdateAvailable(w io.Writer, current, latest string) {
-	fmt.Fprintf(w, "%s Update available: %s -> %s\n",
+	_, _ = fmt.Fprintf(w, "%s Update available: %s -> %s\n",
 		styledTag("[update]"), current, latest)
-	fmt.Fprintf(w, "    Run `a2ahoy update` to install.\n")
+	_, _ = fmt.Fprintf(w, "    Run `a2ahoy update` to install.\n")
 }
 
 // PrintUpdateDownloading announces the download phase, showing the asset
 // name and human-readable size.
 func PrintUpdateDownloading(w io.Writer, assetName string, size int64) {
-	fmt.Fprintf(w, "%s Downloading %s (%s)...\n",
+	_, _ = fmt.Fprintf(w, "%s Downloading %s (%s)...\n",
 		styledTag("[update]"), assetName, humanSize(size))
 }
 
@@ -55,9 +55,9 @@ func PrintUpdateDownloading(w io.Writer, assetName string, size int64) {
 // has been replaced. It includes the install path so users can verify the
 // outcome.
 func PrintUpdateSuccess(w io.Writer, oldVer, newVer, targetPath string) {
-	fmt.Fprintf(w, "%s Successfully updated %s -> %s\n",
+	_, _ = fmt.Fprintf(w, "%s Successfully updated %s -> %s\n",
 		styledTag("[update]"), oldVer, newVer)
-	fmt.Fprintf(w, "    Installed at: %s\n", targetPath)
+	_, _ = fmt.Fprintf(w, "    Installed at: %s\n", targetPath)
 }
 
 // styledUpdateAction returns the human-readable status string for an

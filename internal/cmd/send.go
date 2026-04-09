@@ -39,7 +39,7 @@ func runSend(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	parts, err := filepart.BuildParts(text, flagSendFiles, flagSendFileURLs)
 	if err != nil {

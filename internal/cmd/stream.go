@@ -51,7 +51,7 @@ func runStream(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer a2aClient.Destroy()
+	defer func() { _ = a2aClient.Destroy() }()
 
 	parts, err := filepart.BuildParts(text, flagStreamFiles, flagStreamFileURLs)
 	if err != nil {
@@ -69,7 +69,7 @@ func runStream(cmd *cobra.Command, args []string) error {
 	for event, err := range a2aClient.SendStreamingMessage(ctx, req) {
 		if err != nil {
 			if ctx.Err() != nil {
-				fmt.Fprintln(errOut, "\nInterrupted.")
+				_, _ = fmt.Fprintln(errOut, "\nInterrupted.")
 				return nil
 			}
 			return fmt.Errorf("stream error: %w", err)

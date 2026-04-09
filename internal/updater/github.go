@@ -91,7 +91,7 @@ func (f *GitHubFetcher) FetchLatestRelease(ctx context.Context) (*Release, error
 	if err != nil {
 		return nil, fmt.Errorf("github request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, readGitHubError(resp)

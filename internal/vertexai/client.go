@@ -105,7 +105,7 @@ func (c *Client) FetchCard(ctx context.Context) (*a2a.AgentCard, error) {
 	if err != nil {
 		return nil, fmt.Errorf("card request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, readErrorResponse(resp)
@@ -173,7 +173,7 @@ func (c *Client) SendMessage(ctx context.Context, a2aReq *a2a.SendMessageRequest
 	if err != nil {
 		return nil, fmt.Errorf("send request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, readErrorResponse(resp)
@@ -213,7 +213,7 @@ func (c *Client) SendStreamingMessage(ctx context.Context, a2aReq *a2a.SendMessa
 			yield(nil, fmt.Errorf("stream request failed: %w", err))
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			yield(nil, readErrorResponse(resp))
@@ -303,7 +303,7 @@ func (c *Client) GetTask(ctx context.Context, a2aReq *a2a.GetTaskRequest) (*a2a.
 	if err != nil {
 		return nil, fmt.Errorf("task get request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, readErrorResponse(resp)
@@ -329,7 +329,7 @@ func (c *Client) CancelTask(ctx context.Context, a2aReq *a2a.CancelTaskRequest) 
 	if err != nil {
 		return nil, fmt.Errorf("task cancel request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, readErrorResponse(resp)

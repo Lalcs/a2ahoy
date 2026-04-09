@@ -44,14 +44,14 @@ func RunSimple(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, bas
 	scanner.Buffer(make([]byte, 64*1024), chatMaxLineBytes)
 
 	for {
-		fmt.Fprint(os.Stdout, chatPrompt)
+		_, _ = fmt.Fprint(os.Stdout, chatPrompt)
 		if !scanner.Scan() {
 			// EOF (Ctrl+D) or scanner error.
 			if err := scanner.Err(); err != nil {
-				fmt.Fprintf(os.Stderr, "input error: %v\n", err)
+				_, _ = fmt.Fprintf(os.Stderr, "input error: %v\n", err)
 				return err
 			}
-			fmt.Fprintln(os.Stdout) // newline after ^D for a clean shell prompt
+			_, _ = fmt.Fprintln(os.Stdout) // newline after ^D for a clean shell prompt
 			return nil
 		}
 
@@ -63,7 +63,7 @@ func RunSimple(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, bas
 		if isSlash {
 			exit, err := handleSlashSimple(ctx, c, state, sc, os.Stdout, os.Stderr, useJSON)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				_, _ = fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			}
 			if exit {
 				return nil
@@ -81,7 +81,7 @@ func RunSimple(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, bas
 			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 				return nil
 			}
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		}
 		initialParts = nil // consumed on first turn
 	}
@@ -108,7 +108,7 @@ func runSimpleTurn(ctx context.Context, c client.A2AClient, state *State, text s
 	for event, err := range c.SendStreamingMessage(turnCtx, req) {
 		if err != nil {
 			if turnCtx.Err() != nil {
-				fmt.Fprintln(os.Stderr, "\nInterrupted.")
+				_, _ = fmt.Fprintln(os.Stderr, "\nInterrupted.")
 				return nil // cancelled; state intentionally not updated
 			}
 			return fmt.Errorf("stream error: %w", err)
@@ -129,7 +129,7 @@ func runSimpleTurn(ctx context.Context, c client.A2AClient, state *State, text s
 
 	// Ensure spacing between turns even if the last event did not emit a
 	// trailing newline (artifact-update events, for example).
-	fmt.Fprintln(os.Stdout)
+	_, _ = fmt.Fprintln(os.Stdout)
 
 	if !tmp.IsFresh() {
 		state.Update(tmp.TaskInfo())
@@ -148,7 +148,7 @@ func handleSlashSimple(ctx context.Context, c client.A2AClient, state *State, sc
 		return false, nil
 	case "new":
 		state.Reset()
-		fmt.Fprintln(stdout, "Started a new conversation.")
+		_, _ = fmt.Fprintln(stdout, "Started a new conversation.")
 		return false, nil
 	case "get":
 		return false, runSimpleTaskCmd(ctx, state, sc.Arg, "get", stdout, useJSON,
@@ -198,20 +198,20 @@ func printWelcomeBanner(w io.Writer, card *a2a.AgentCard, baseURL string) {
 	if card != nil && card.Name != "" {
 		name = card.Name
 	}
-	fmt.Fprintf(w, "Connected to %s (%s)\n", name, baseURL)
-	fmt.Fprintln(w, "Type a message and press Enter. Type /help for commands.")
-	fmt.Fprintln(w, "Press Ctrl+C at the prompt to exit.")
+	_, _ = fmt.Fprintf(w, "Connected to %s (%s)\n", name, baseURL)
+	_, _ = fmt.Fprintln(w, "Type a message and press Enter. Type /help for commands.")
+	_, _ = fmt.Fprintln(w, "Press Ctrl+C at the prompt to exit.")
 }
 
 // printChatHelp prints the slash command reference. Shared between the
 // simple-mode `/help` command and (when imported) the TUI help overlay
 // so there is a single source of truth for command documentation.
 func printChatHelp(w io.Writer) {
-	fmt.Fprintln(w, "Commands:")
+	_, _ = fmt.Fprintln(w, "Commands:")
 	for _, s := range AllSuggestions {
-		fmt.Fprintf(w, "  %-10s %s\n", s.Name, s.Help)
+		_, _ = fmt.Fprintf(w, "  %-10s %s\n", s.Name, s.Help)
 	}
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "During streaming, Ctrl+C cancels the request and returns to the prompt.")
-	fmt.Fprintln(w, "At the prompt, Ctrl+C or Ctrl+D exits the chat.")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "During streaming, Ctrl+C cancels the request and returns to the prompt.")
+	_, _ = fmt.Fprintln(w, "At the prompt, Ctrl+C or Ctrl+D exits the chat.")
 }

@@ -11,58 +11,58 @@ import (
 
 // PrintAgentCard writes a formatted display of an AgentCard.
 func PrintAgentCard(w io.Writer, card *a2a.AgentCard) error {
-	fmt.Fprintf(w, "%s\n", styledHeader("=== Agent Card ==="))
-	fmt.Fprintf(w, "%s %s\n", styledLabel("Name:       "), styledSuccess(card.Name))
-	fmt.Fprintf(w, "%s %s\n", styledLabel("Description:"), card.Description)
-	fmt.Fprintf(w, "%s %s\n", styledLabel("Version:    "), card.Version)
+	_, _ = fmt.Fprintf(w, "%s\n", styledHeader("=== Agent Card ==="))
+	_, _ = fmt.Fprintf(w, "%s %s\n", styledLabel("Name:       "), styledSuccess(card.Name))
+	_, _ = fmt.Fprintf(w, "%s %s\n", styledLabel("Description:"), card.Description)
+	_, _ = fmt.Fprintf(w, "%s %s\n", styledLabel("Version:    "), card.Version)
 
 	if card.Provider != nil {
-		fmt.Fprintf(w, "%s %s (%s)\n", styledLabel("Provider:   "), card.Provider.Org, card.Provider.URL)
+		_, _ = fmt.Fprintf(w, "%s %s (%s)\n", styledLabel("Provider:   "), card.Provider.Org, card.Provider.URL)
 	}
 
 	if card.DocumentationURL != "" {
-		fmt.Fprintf(w, "%s %s\n", styledLabel("Docs:       "), card.DocumentationURL)
+		_, _ = fmt.Fprintf(w, "%s %s\n", styledLabel("Docs:       "), card.DocumentationURL)
 	}
 
 	// Capabilities
-	fmt.Fprintf(w, "\n%s\n", styledDivider("--- Capabilities ---"))
-	fmt.Fprintf(w, "%s %v\n", styledLabel("Streaming:         "), card.Capabilities.Streaming)
-	fmt.Fprintf(w, "%s %v\n", styledLabel("Push Notifications:"), card.Capabilities.PushNotifications)
-	fmt.Fprintf(w, "%s %v\n", styledLabel("Extended Card:     "), card.Capabilities.ExtendedAgentCard)
+	_, _ = fmt.Fprintf(w, "\n%s\n", styledDivider("--- Capabilities ---"))
+	_, _ = fmt.Fprintf(w, "%s %v\n", styledLabel("Streaming:         "), card.Capabilities.Streaming)
+	_, _ = fmt.Fprintf(w, "%s %v\n", styledLabel("Push Notifications:"), card.Capabilities.PushNotifications)
+	_, _ = fmt.Fprintf(w, "%s %v\n", styledLabel("Extended Card:     "), card.Capabilities.ExtendedAgentCard)
 
 	// Interfaces
 	if len(card.SupportedInterfaces) > 0 {
-		fmt.Fprintf(w, "\n%s\n", styledDivider("--- Interfaces ---"))
+		_, _ = fmt.Fprintf(w, "\n%s\n", styledDivider("--- Interfaces ---"))
 		for _, iface := range card.SupportedInterfaces {
-			fmt.Fprintf(w, "  %s %s (v%s)\n", styledTag(fmt.Sprintf("[%s]", iface.ProtocolBinding)), iface.URL, iface.ProtocolVersion)
+			_, _ = fmt.Fprintf(w, "  %s %s (v%s)\n", styledTag(fmt.Sprintf("[%s]", iface.ProtocolBinding)), iface.URL, iface.ProtocolVersion)
 		}
 	}
 
 	// Default modes
 	if len(card.DefaultInputModes) > 0 {
-		fmt.Fprintf(w, "\n%s\n", styledDivider("--- Default Input Modes ---"))
-		fmt.Fprintf(w, "  %s\n", strings.Join(card.DefaultInputModes, ", "))
+		_, _ = fmt.Fprintf(w, "\n%s\n", styledDivider("--- Default Input Modes ---"))
+		_, _ = fmt.Fprintf(w, "  %s\n", strings.Join(card.DefaultInputModes, ", "))
 	}
 	if len(card.DefaultOutputModes) > 0 {
-		fmt.Fprintf(w, "\n%s\n", styledDivider("--- Default Output Modes ---"))
-		fmt.Fprintf(w, "  %s\n", strings.Join(card.DefaultOutputModes, ", "))
+		_, _ = fmt.Fprintf(w, "\n%s\n", styledDivider("--- Default Output Modes ---"))
+		_, _ = fmt.Fprintf(w, "  %s\n", strings.Join(card.DefaultOutputModes, ", "))
 	}
 
 	// Skills
 	if len(card.Skills) > 0 {
-		fmt.Fprintf(w, "\n%s\n", styledDivider(fmt.Sprintf("--- Skills (%d) ---", len(card.Skills))))
+		_, _ = fmt.Fprintf(w, "\n%s\n", styledDivider(fmt.Sprintf("--- Skills (%d) ---", len(card.Skills))))
 		for i, skill := range card.Skills {
-			fmt.Fprintf(w, "  %s %s (id: %s)\n", styledTag(fmt.Sprintf("[%d]", i+1)), skill.Name, skill.ID)
+			_, _ = fmt.Fprintf(w, "  %s %s (id: %s)\n", styledTag(fmt.Sprintf("[%d]", i+1)), skill.Name, skill.ID)
 			if skill.Description != "" {
-				fmt.Fprintf(w, "      %s %s\n", styledLabel("Description:"), skill.Description)
+				_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Description:"), skill.Description)
 			}
 			if len(skill.Tags) > 0 {
-				fmt.Fprintf(w, "      %s %s\n", styledLabel("Tags:"), strings.Join(skill.Tags, ", "))
+				_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Tags:"), strings.Join(skill.Tags, ", "))
 			}
 			if len(skill.Examples) > 0 {
-				fmt.Fprintf(w, "      %s\n", styledLabel("Examples:"))
+				_, _ = fmt.Fprintf(w, "      %s\n", styledLabel("Examples:"))
 				for _, ex := range skill.Examples {
-					fmt.Fprintf(w, "        - %s\n", ex)
+					_, _ = fmt.Fprintf(w, "        - %s\n", ex)
 				}
 			}
 		}
@@ -85,22 +85,22 @@ func PrintValidation(w io.Writer, result cardcheck.Result) {
 	}
 
 	title := fmt.Sprintf("--- Validation (%s) ---", formatValidationCounts(result))
-	fmt.Fprintf(w, "\n%s\n", styledDivider(title))
+	_, _ = fmt.Fprintf(w, "\n%s\n", styledDivider(title))
 
 	for i, iss := range result.Issues {
-		fmt.Fprintf(w, "  %s %s\n", styledIssueLevel(iss.Level), iss.Code)
+		_, _ = fmt.Fprintf(w, "  %s %s\n", styledIssueLevel(iss.Level), iss.Code)
 		if iss.Message != "" {
-			fmt.Fprintf(w, "          %s\n", iss.Message)
+			_, _ = fmt.Fprintf(w, "          %s\n", iss.Message)
 		}
 		if iss.Field != "" {
-			fmt.Fprintf(w, "          %s %s\n", styledLabel("field:"), iss.Field)
+			_, _ = fmt.Fprintf(w, "          %s %s\n", styledLabel("field:"), iss.Field)
 		}
 		if iss.Hint != "" {
-			fmt.Fprintf(w, "          %s  %s\n", styledLabel("hint:"), iss.Hint)
+			_, _ = fmt.Fprintf(w, "          %s  %s\n", styledLabel("hint:"), iss.Hint)
 		}
 		// Blank line between issues, but not after the last.
 		if i < len(result.Issues)-1 {
-			fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w)
 		}
 	}
 }
@@ -118,7 +118,7 @@ func PrintValidationSummary(w io.Writer, result cardcheck.Result) {
 		if field == "" {
 			field = "-"
 		}
-		fmt.Fprintf(w, "a2ahoy card: %s: %s %s\n", iss.Level, iss.Code, field)
+		_, _ = fmt.Fprintf(w, "a2ahoy card: %s: %s %s\n", iss.Level, iss.Code, field)
 	}
 }
 

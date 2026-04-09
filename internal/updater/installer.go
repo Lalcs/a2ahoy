@@ -208,7 +208,7 @@ func (i *Installer) downloadAsset(ctx context.Context, asset *Asset, dst io.Writ
 	if err != nil {
 		return fmt.Errorf("download request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download returned HTTP %d for %s", resp.StatusCode, asset.BrowserDownloadURL)

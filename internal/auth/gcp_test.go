@@ -175,7 +175,7 @@ func TestNewGCPAuthInterceptor_Success(t *testing.T) {
 	jwt := fakeJWT()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token": jwt,
 			"token_type":   "Bearer",
 			"expires_in":   3600,
