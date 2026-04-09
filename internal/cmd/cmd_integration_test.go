@@ -12,7 +12,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Lalcs/a2ahoy/internal/updater"
 	"github.com/Lalcs/a2ahoy/internal/version"
@@ -1040,25 +1039,19 @@ func TestRunTaskResubscribe_Interrupted(t *testing.T) {
 		return ctx, cancel
 	}
 
+	// Cancel the context once the server has sent the first event.
+	go func() {
+		<-started
+		cancel()
+	}()
+
 	rootCmd.SetArgs([]string{"task", "resubscribe", ts.URL, "task-int"})
 	rootCmd.SetOut(io.Discard)
 	var errBuf strings.Builder
 	rootCmd.SetErr(&errBuf)
 
-	done := make(chan error, 1)
-	go func() {
-		done <- rootCmd.Execute()
-	}()
-
-	select {
-	case <-started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for server to send first event")
-	}
-	cancel()
-
-	err := <-done
-	if err != nil {
+	// Execute blocks until the stream ends (via context cancellation).
+	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("expected nil error on interrupt, got: %v", err)
 	}
 	if !strings.Contains(errBuf.String(), "Interrupted") {
@@ -1637,25 +1630,19 @@ func TestRunStream_Interrupted(t *testing.T) {
 		return ctx, cancel
 	}
 
+	// Cancel the context once the server has sent the first event.
+	go func() {
+		<-started
+		cancel()
+	}()
+
 	rootCmd.SetArgs([]string{"stream", ts.URL, "hello"})
 	rootCmd.SetOut(io.Discard)
 	var errBuf strings.Builder
 	rootCmd.SetErr(&errBuf)
 
-	done := make(chan error, 1)
-	go func() {
-		done <- rootCmd.Execute()
-	}()
-
-	select {
-	case <-started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for server to send first event")
-	}
-	cancel()
-
-	err := <-done
-	if err != nil {
+	// Execute blocks until the stream ends (via context cancellation).
+	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("expected nil error on interrupt, got: %v", err)
 	}
 	if !strings.Contains(errBuf.String(), "Interrupted") {
