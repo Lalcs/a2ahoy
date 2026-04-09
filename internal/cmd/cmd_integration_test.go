@@ -15,6 +15,7 @@ import (
 
 	"github.com/Lalcs/a2ahoy/internal/updater"
 	"github.com/Lalcs/a2ahoy/internal/version"
+	pflag "github.com/spf13/pflag"
 )
 
 // resetGlobalFlags resets all package-level flag variables to their zero
@@ -34,6 +35,11 @@ func resetGlobalFlags(t *testing.T) {
 	flagChatSimple = false
 	// Prevent env var leakage from ambient environment.
 	t.Setenv(bearerTokenEnvVar, "")
+	// Reset Changed state on subcommand-local flags so tests are
+	// order-independent. Cobra does not clear this between Execute() calls.
+	for _, cmd := range rootCmd.Commands() {
+		cmd.Flags().Visit(func(f *pflag.Flag) { f.Changed = false })
+	}
 }
 
 // v1CardJSON returns a minimal A2A spec v1.0 agent card JSON whose
@@ -734,6 +740,49 @@ func TestRunList_WithFilters(t *testing.T) {
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("runList with filters failed: %v", err)
+	}
+}
+
+func TestRunList_WithHistoryLength(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{"list", ts.URL, "--history-length", "5"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runList --history-length failed: %v", err)
+	}
+}
+
+func TestRunList_WithStatusAfter(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{"list", ts.URL, "--status-after", "2026-01-01T00:00:00Z"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runList --status-after failed: %v", err)
+	}
+}
+
+func TestRunList_InvalidStatusAfter(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{"list", ts.URL, "--status-after", "not-a-date"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for invalid --status-after")
+	}
+	if !strings.Contains(err.Error(), "invalid --status-after") {
+		t.Errorf("expected invalid --status-after error, got: %v", err)
 	}
 }
 
