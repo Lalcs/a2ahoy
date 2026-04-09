@@ -44,7 +44,7 @@ func resetGlobalFlags(t *testing.T) {
 	t.Setenv(bearerTokenEnvVar, "")
 	// Reset Changed state on subcommand-local flags so tests are
 	// order-independent. Cobra does not clear this between Execute() calls.
-	// Recurse into nested subcommands (e.g. push set/get/list/delete).
+	// Recurse into nested subcommands (e.g. task get/cancel/list, push set/get/list/delete).
 	var resetFlags func(cmds []*cobra.Command)
 	resetFlags = func(cmds []*cobra.Command) {
 		for _, cmd := range cmds {
@@ -562,14 +562,14 @@ func TestRunStream_ServerError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// runGet
+// runTaskGet
 // ---------------------------------------------------------------------------
 
-func TestRunGet_HumanReadable(t *testing.T) {
+func TestRunTaskGet_HumanReadable(t *testing.T) {
 	resetGlobalFlags(t)
 	ts := a2aTestServer(t)
 
-	rootCmd.SetArgs([]string{"get", ts.URL, "task-get-1"})
+	rootCmd.SetArgs([]string{"task", "get", ts.URL, "task-get-1"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -578,11 +578,11 @@ func TestRunGet_HumanReadable(t *testing.T) {
 	}
 }
 
-func TestRunGet_JSON(t *testing.T) {
+func TestRunTaskGet_JSON(t *testing.T) {
 	resetGlobalFlags(t)
 	ts := a2aTestServer(t)
 
-	rootCmd.SetArgs([]string{"--json", "get", ts.URL, "task-get-1"})
+	rootCmd.SetArgs([]string{"--json", "task", "get", ts.URL, "task-get-1"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -591,11 +591,11 @@ func TestRunGet_JSON(t *testing.T) {
 	}
 }
 
-func TestRunGet_WithHistoryLength(t *testing.T) {
+func TestRunTaskGet_WithHistoryLength(t *testing.T) {
 	resetGlobalFlags(t)
 	ts := a2aTestServer(t)
 
-	rootCmd.SetArgs([]string{"get", "--history-length", "5", ts.URL, "task-get-1"})
+	rootCmd.SetArgs([]string{"task", "get", "--history-length", "5", ts.URL, "task-get-1"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -604,9 +604,9 @@ func TestRunGet_WithHistoryLength(t *testing.T) {
 	}
 }
 
-func TestRunGet_InvalidURL(t *testing.T) {
+func TestRunTaskGet_InvalidURL(t *testing.T) {
 	resetGlobalFlags(t)
-	rootCmd.SetArgs([]string{"get", "http://127.0.0.1:1", "task-1"})
+	rootCmd.SetArgs([]string{"task", "get", "http://127.0.0.1:1", "task-1"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -615,7 +615,7 @@ func TestRunGet_InvalidURL(t *testing.T) {
 	}
 }
 
-func TestRunGet_ServerError(t *testing.T) {
+func TestRunTaskGet_ServerError(t *testing.T) {
 	resetGlobalFlags(t)
 
 	var ts *httptest.Server
@@ -636,7 +636,7 @@ func TestRunGet_ServerError(t *testing.T) {
 	ts = httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 
-	rootCmd.SetArgs([]string{"get", ts.URL, "nonexistent"})
+	rootCmd.SetArgs([]string{"task", "get", ts.URL, "nonexistent"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -650,14 +650,14 @@ func TestRunGet_ServerError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// runCancel
+// runTaskCancel
 // ---------------------------------------------------------------------------
 
-func TestRunCancel_HumanReadable(t *testing.T) {
+func TestRunTaskCancel_HumanReadable(t *testing.T) {
 	resetGlobalFlags(t)
 	ts := a2aTestServer(t)
 
-	rootCmd.SetArgs([]string{"cancel", ts.URL, "task-cancel-1"})
+	rootCmd.SetArgs([]string{"task", "cancel", ts.URL, "task-cancel-1"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -666,11 +666,11 @@ func TestRunCancel_HumanReadable(t *testing.T) {
 	}
 }
 
-func TestRunCancel_JSON(t *testing.T) {
+func TestRunTaskCancel_JSON(t *testing.T) {
 	resetGlobalFlags(t)
 	ts := a2aTestServer(t)
 
-	rootCmd.SetArgs([]string{"--json", "cancel", ts.URL, "task-cancel-1"})
+	rootCmd.SetArgs([]string{"--json", "task", "cancel", ts.URL, "task-cancel-1"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -679,9 +679,9 @@ func TestRunCancel_JSON(t *testing.T) {
 	}
 }
 
-func TestRunCancel_InvalidURL(t *testing.T) {
+func TestRunTaskCancel_InvalidURL(t *testing.T) {
 	resetGlobalFlags(t)
-	rootCmd.SetArgs([]string{"cancel", "http://127.0.0.1:1", "task-1"})
+	rootCmd.SetArgs([]string{"task", "cancel", "http://127.0.0.1:1", "task-1"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -690,7 +690,7 @@ func TestRunCancel_InvalidURL(t *testing.T) {
 	}
 }
 
-func TestRunCancel_ServerError(t *testing.T) {
+func TestRunTaskCancel_ServerError(t *testing.T) {
 	resetGlobalFlags(t)
 
 	var ts *httptest.Server
@@ -711,7 +711,7 @@ func TestRunCancel_ServerError(t *testing.T) {
 	ts = httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 
-	rootCmd.SetArgs([]string{"cancel", ts.URL, "task-1"})
+	rootCmd.SetArgs([]string{"task", "cancel", ts.URL, "task-1"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -725,15 +725,15 @@ func TestRunCancel_ServerError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// runList
+// runTaskList
 // ---------------------------------------------------------------------------
 
-func TestRunList_HumanReadable(t *testing.T) {
+func TestRunTaskList_HumanReadable(t *testing.T) {
 	resetGlobalFlags(t)
 	ts := a2aTestServer(t)
 
 	var buf strings.Builder
-	rootCmd.SetArgs([]string{"list", ts.URL})
+	rootCmd.SetArgs([]string{"task", "list", ts.URL})
 	rootCmd.SetOut(&buf)
 	rootCmd.SetErr(io.Discard)
 
@@ -756,12 +756,12 @@ func TestRunList_HumanReadable(t *testing.T) {
 	}
 }
 
-func TestRunList_JSON(t *testing.T) {
+func TestRunTaskList_JSON(t *testing.T) {
 	resetGlobalFlags(t)
 	ts := a2aTestServer(t)
 
 	var buf strings.Builder
-	rootCmd.SetArgs([]string{"--json", "list", ts.URL})
+	rootCmd.SetArgs([]string{"--json", "task", "list", ts.URL})
 	rootCmd.SetOut(&buf)
 	rootCmd.SetErr(io.Discard)
 
@@ -778,12 +778,12 @@ func TestRunList_JSON(t *testing.T) {
 	}
 }
 
-func TestRunList_WithFilters(t *testing.T) {
+func TestRunTaskList_WithFilters(t *testing.T) {
 	resetGlobalFlags(t)
 	ts := a2aTestServer(t)
 
 	rootCmd.SetArgs([]string{
-		"list", ts.URL,
+		"task", "list", ts.URL,
 		"--context-id", "ctx-list-1",
 		"--status", "TASK_STATE_COMPLETED",
 		"--page-size", "10",
@@ -796,11 +796,11 @@ func TestRunList_WithFilters(t *testing.T) {
 	}
 }
 
-func TestRunList_WithHistoryLength(t *testing.T) {
+func TestRunTaskList_WithHistoryLength(t *testing.T) {
 	resetGlobalFlags(t)
 	ts := a2aTestServer(t)
 
-	rootCmd.SetArgs([]string{"list", ts.URL, "--history-length", "5"})
+	rootCmd.SetArgs([]string{"task", "list", ts.URL, "--history-length", "5"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -809,11 +809,11 @@ func TestRunList_WithHistoryLength(t *testing.T) {
 	}
 }
 
-func TestRunList_WithStatusAfter(t *testing.T) {
+func TestRunTaskList_WithStatusAfter(t *testing.T) {
 	resetGlobalFlags(t)
 	ts := a2aTestServer(t)
 
-	rootCmd.SetArgs([]string{"list", ts.URL, "--status-after", "2026-01-01T00:00:00Z"})
+	rootCmd.SetArgs([]string{"task", "list", ts.URL, "--status-after", "2026-01-01T00:00:00Z"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -822,11 +822,11 @@ func TestRunList_WithStatusAfter(t *testing.T) {
 	}
 }
 
-func TestRunList_InvalidStatusAfter(t *testing.T) {
+func TestRunTaskList_InvalidStatusAfter(t *testing.T) {
 	resetGlobalFlags(t)
 	ts := a2aTestServer(t)
 
-	rootCmd.SetArgs([]string{"list", ts.URL, "--status-after", "not-a-date"})
+	rootCmd.SetArgs([]string{"task", "list", ts.URL, "--status-after", "not-a-date"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -839,9 +839,9 @@ func TestRunList_InvalidStatusAfter(t *testing.T) {
 	}
 }
 
-func TestRunList_InvalidURL(t *testing.T) {
+func TestRunTaskList_InvalidURL(t *testing.T) {
 	resetGlobalFlags(t)
-	rootCmd.SetArgs([]string{"list", "http://127.0.0.1:1"})
+	rootCmd.SetArgs([]string{"task", "list", "http://127.0.0.1:1"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -850,7 +850,7 @@ func TestRunList_InvalidURL(t *testing.T) {
 	}
 }
 
-func TestRunList_ServerError(t *testing.T) {
+func TestRunTaskList_ServerError(t *testing.T) {
 	resetGlobalFlags(t)
 
 	var ts *httptest.Server
@@ -871,7 +871,7 @@ func TestRunList_ServerError(t *testing.T) {
 	ts = httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 
-	rootCmd.SetArgs([]string{"list", ts.URL})
+	rootCmd.SetArgs([]string{"task", "list", ts.URL})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 

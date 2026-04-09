@@ -28,9 +28,9 @@ go test ./internal/vertexai/...
 - `a2ahoy card <agent-url>` — Fetch and display an agent's card from `/.well-known/agent-card.json`
 - `a2ahoy send <agent-url> <message>` — Send a message via `SendMessage`
 - `a2ahoy stream <agent-url> <message>` — Stream a message via SSE (`SendStreamingMessage`)
-- `a2ahoy get <agent-url> <task-id>` — Retrieve a task by ID via `GetTask`
-- `a2ahoy cancel <agent-url> <task-id>` — Cancel a task by ID via `CancelTask`
-- `a2ahoy list <agent-url>` — List tasks with optional filtering and pagination via `ListTasks`
+- `a2ahoy task get <agent-url> <task-id>` — Retrieve a task by ID via `GetTask`
+- `a2ahoy task cancel <agent-url> <task-id>` — Cancel a task by ID via `CancelTask`
+- `a2ahoy task list <agent-url>` — List tasks with optional filtering and pagination via `ListTasks`
 
 Global flags: `--gcp-auth` (GCP ADC ID token auth), `--vertex-ai` (Vertex AI Agent Engine mode), `--v03-rest-mount` (opt-in A2A v0.3 REST `/v1` mount-point prefix workaround for Python a2a-sdk / ADK / Vertex AI peers; applies to both standard and Vertex AI paths), `--json` (raw JSON output), `--header KEY=VALUE` (repeatable custom HTTP header), `--bearer-token` (static Bearer token, also from `A2A_BEARER_TOKEN` env var)
 
@@ -44,7 +44,8 @@ internal/
 │   ├── card.go              # card subcommand (standard + Vertex AI paths)
 │   ├── send.go              # send subcommand
 │   ├── stream.go            # stream subcommand
-│   └── list.go              # list subcommand (ListTasks with filters/pagination)
+│   ├── task.go              # task parent command + get/cancel/list subcommands
+│   └── push.go              # push parent command + set/get/list/delete subcommands
 ├── client/                  # A2A client factory
 │   ├── a2a_client.go        # A2AClient interface (abstracts standard & Vertex AI)
 │   └── client.go            # Factory: resolves agent card, creates client

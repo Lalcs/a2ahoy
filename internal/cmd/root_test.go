@@ -26,7 +26,7 @@ func TestRootCommand_HasSubcommands(t *testing.T) {
 		names[cmd.Name()] = true
 	}
 
-	expected := []string{"cancel", "card", "chat", "get", "push", "send", "stream", "update", "version"}
+	expected := []string{"card", "chat", "push", "send", "stream", "task", "update", "version"}
 	for _, name := range expected {
 		if !names[name] {
 			t.Errorf("missing subcommand %q", name)
@@ -120,8 +120,23 @@ func TestSendCommand_TooManyArgs(t *testing.T) {
 	}
 }
 
-func TestGetCommand_MissingArgs(t *testing.T) {
-	rootCmd.SetArgs([]string{"get"})
+func TestTaskCommand_HasSubcommands(t *testing.T) {
+	commands := taskCmd.Commands()
+	names := make(map[string]bool)
+	for _, cmd := range commands {
+		names[cmd.Name()] = true
+	}
+
+	expected := []string{"cancel", "get", "list"}
+	for _, name := range expected {
+		if !names[name] {
+			t.Errorf("missing task subcommand %q", name)
+		}
+	}
+}
+
+func TestTaskGetCommand_MissingArgs(t *testing.T) {
+	rootCmd.SetArgs([]string{"task", "get"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -131,8 +146,8 @@ func TestGetCommand_MissingArgs(t *testing.T) {
 	}
 }
 
-func TestGetCommand_OneArg(t *testing.T) {
-	rootCmd.SetArgs([]string{"get", "url"})
+func TestTaskGetCommand_OneArg(t *testing.T) {
+	rootCmd.SetArgs([]string{"task", "get", "url"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -142,8 +157,8 @@ func TestGetCommand_OneArg(t *testing.T) {
 	}
 }
 
-func TestGetCommand_TooManyArgs(t *testing.T) {
-	rootCmd.SetArgs([]string{"get", "url", "task-1", "extra"})
+func TestTaskGetCommand_TooManyArgs(t *testing.T) {
+	rootCmd.SetArgs([]string{"task", "get", "url", "task-1", "extra"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -153,8 +168,8 @@ func TestGetCommand_TooManyArgs(t *testing.T) {
 	}
 }
 
-func TestCancelCommand_MissingArgs(t *testing.T) {
-	rootCmd.SetArgs([]string{"cancel"})
+func TestTaskCancelCommand_MissingArgs(t *testing.T) {
+	rootCmd.SetArgs([]string{"task", "cancel"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -164,8 +179,8 @@ func TestCancelCommand_MissingArgs(t *testing.T) {
 	}
 }
 
-func TestCancelCommand_OneArg(t *testing.T) {
-	rootCmd.SetArgs([]string{"cancel", "url"})
+func TestTaskCancelCommand_OneArg(t *testing.T) {
+	rootCmd.SetArgs([]string{"task", "cancel", "url"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
@@ -175,8 +190,8 @@ func TestCancelCommand_OneArg(t *testing.T) {
 	}
 }
 
-func TestCancelCommand_TooManyArgs(t *testing.T) {
-	rootCmd.SetArgs([]string{"cancel", "url", "task-1", "extra"})
+func TestTaskCancelCommand_TooManyArgs(t *testing.T) {
+	rootCmd.SetArgs([]string{"task", "cancel", "url", "task-1", "extra"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
