@@ -1690,6 +1690,26 @@ func TestClient_SubscribeToTask_NotSupported(t *testing.T) {
 	}
 }
 
+func TestClient_PushConfig_NotSupported(t *testing.T) {
+	c, server := newTestClient(t, http.NewServeMux())
+	defer server.Close()
+
+	ctx := context.Background()
+
+	if _, err := c.CreateTaskPushConfig(ctx, &a2a.CreateTaskPushConfigRequest{}); !errors.Is(err, ErrPushNotSupported) {
+		t.Errorf("CreateTaskPushConfig: got %v, want ErrPushNotSupported", err)
+	}
+	if _, err := c.GetTaskPushConfig(ctx, &a2a.GetTaskPushConfigRequest{}); !errors.Is(err, ErrPushNotSupported) {
+		t.Errorf("GetTaskPushConfig: got %v, want ErrPushNotSupported", err)
+	}
+	if _, err := c.ListTaskPushConfigs(ctx, &a2a.ListTaskPushConfigRequest{}); !errors.Is(err, ErrPushNotSupported) {
+		t.Errorf("ListTaskPushConfigs: got %v, want ErrPushNotSupported", err)
+	}
+	if err := c.DeleteTaskPushConfig(ctx, &a2a.DeleteTaskPushConfigRequest{}); !errors.Is(err, ErrPushNotSupported) {
+		t.Errorf("DeleteTaskPushConfig: got %v, want ErrPushNotSupported", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // readErrorResponse
 // ---------------------------------------------------------------------------

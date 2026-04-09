@@ -140,6 +140,16 @@ func TestBackoff(t *testing.T) {
 			t.Errorf("backoff(20) = %v, want >= 30s", d)
 		}
 	})
+
+	t.Run("attempt beyond maxBackoffShift is clamped", func(t *testing.T) {
+		d := backoff(maxBackoffShift + 10)
+		if d > 45*time.Second {
+			t.Errorf("backoff(%d) = %v, want <= 45s", maxBackoffShift+10, d)
+		}
+		if d < 30*time.Second {
+			t.Errorf("backoff(%d) = %v, want >= 30s", maxBackoffShift+10, d)
+		}
+	})
 }
 
 func TestRetry_SucceedsFirstAttempt(t *testing.T) {
@@ -246,11 +256,36 @@ func TestRetry_RespectsContextCancellation(t *testing.T) {
 	}
 }
 
+func TestRetry_NegativeMaxRetries(t *testing.T) {
+	called := false
+	result, err := retry(context.Background(), -1, func() (string, error) {
+		called = true
+		return "value", nil
+	})
+	if called {
+		t.Error("fn should not be called with negative maxRetries")
+	}
+	if result != "" {
+		t.Errorf("result = %q, want zero value", result)
+	}
+	if err != nil {
+		t.Errorf("err = %v, want nil", err)
+	}
+}
+
 // mockA2AClient is a minimal mock for testing retryClient.
 type mockA2AClient struct {
 	sendMessageCalls          int
 	sendStreamingMessageCalls int
 	subscribeToTaskCalls      int
+	getTaskCalls              int
+	cancelTaskCalls           int
+	listTasksCalls            int
+	createTaskPushConfigCalls int
+	getTaskPushConfigCalls    int
+	listTaskPushConfigsCalls  int
+	deleteTaskPushConfigCalls int
+	destroyCalls              int
 }
 
 func (m *mockA2AClient) SendMessage(_ context.Context, _ *a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
@@ -269,27 +304,106 @@ func (m *mockA2AClient) SubscribeToTask(_ context.Context, _ *a2a.SubscribeToTas
 }
 
 func (m *mockA2AClient) GetTask(_ context.Context, _ *a2a.GetTaskRequest) (*a2a.Task, error) {
+	m.getTaskCalls++
 	return nil, nil
 }
 func (m *mockA2AClient) CancelTask(_ context.Context, _ *a2a.CancelTaskRequest) (*a2a.Task, error) {
+	m.cancelTaskCalls++
 	return nil, nil
 }
 func (m *mockA2AClient) ListTasks(_ context.Context, _ *a2a.ListTasksRequest) (*a2a.ListTasksResponse, error) {
+	m.listTasksCalls++
 	return nil, nil
 }
 func (m *mockA2AClient) CreateTaskPushConfig(_ context.Context, _ *a2a.CreateTaskPushConfigRequest) (*a2a.TaskPushConfig, error) {
+	m.createTaskPushConfigCalls++
 	return nil, nil
 }
 func (m *mockA2AClient) GetTaskPushConfig(_ context.Context, _ *a2a.GetTaskPushConfigRequest) (*a2a.TaskPushConfig, error) {
+	m.getTaskPushConfigCalls++
 	return nil, nil
 }
 func (m *mockA2AClient) ListTaskPushConfigs(_ context.Context, _ *a2a.ListTaskPushConfigRequest) ([]*a2a.TaskPushConfig, error) {
+	m.listTaskPushConfigsCalls++
 	return nil, nil
 }
 func (m *mockA2AClient) DeleteTaskPushConfig(_ context.Context, _ *a2a.DeleteTaskPushConfigRequest) error {
+	m.deleteTaskPushConfigCalls++
 	return nil
 }
-func (m *mockA2AClient) Destroy() error { return nil }
+func (m *mockA2AClient) Destroy() error {
+	m.destroyCalls++
+	return nil
+}
+
+func TestRetryClient_DelegationMethods(t *testing.T) {
+	mock := &mockA2AClient{}
+	rc := &retryClient{inner: mock, maxRetries: 3}
+	ctx := context.Background()
+
+	if _, err := rc.SendMessage(ctx, &a2a.SendMessageRequest{}); err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	if mock.sendMessageCalls != 1 {
+		t.Errorf("sendMessageCalls = %d, want 1", mock.sendMessageCalls)
+	}
+
+	if _, err := rc.GetTask(ctx, &a2a.GetTaskRequest{}); err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if mock.getTaskCalls != 1 {
+		t.Errorf("getTaskCalls = %d, want 1", mock.getTaskCalls)
+	}
+
+	if _, err := rc.CancelTask(ctx, &a2a.CancelTaskRequest{}); err != nil {
+		t.Fatalf("CancelTask: %v", err)
+	}
+	if mock.cancelTaskCalls != 1 {
+		t.Errorf("cancelTaskCalls = %d, want 1", mock.cancelTaskCalls)
+	}
+
+	if _, err := rc.ListTasks(ctx, &a2a.ListTasksRequest{}); err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if mock.listTasksCalls != 1 {
+		t.Errorf("listTasksCalls = %d, want 1", mock.listTasksCalls)
+	}
+
+	if _, err := rc.CreateTaskPushConfig(ctx, &a2a.CreateTaskPushConfigRequest{}); err != nil {
+		t.Fatalf("CreateTaskPushConfig: %v", err)
+	}
+	if mock.createTaskPushConfigCalls != 1 {
+		t.Errorf("createTaskPushConfigCalls = %d, want 1", mock.createTaskPushConfigCalls)
+	}
+
+	if _, err := rc.GetTaskPushConfig(ctx, &a2a.GetTaskPushConfigRequest{}); err != nil {
+		t.Fatalf("GetTaskPushConfig: %v", err)
+	}
+	if mock.getTaskPushConfigCalls != 1 {
+		t.Errorf("getTaskPushConfigCalls = %d, want 1", mock.getTaskPushConfigCalls)
+	}
+
+	if _, err := rc.ListTaskPushConfigs(ctx, &a2a.ListTaskPushConfigRequest{}); err != nil {
+		t.Fatalf("ListTaskPushConfigs: %v", err)
+	}
+	if mock.listTaskPushConfigsCalls != 1 {
+		t.Errorf("listTaskPushConfigsCalls = %d, want 1", mock.listTaskPushConfigsCalls)
+	}
+
+	if err := rc.DeleteTaskPushConfig(ctx, &a2a.DeleteTaskPushConfigRequest{}); err != nil {
+		t.Fatalf("DeleteTaskPushConfig: %v", err)
+	}
+	if mock.deleteTaskPushConfigCalls != 1 {
+		t.Errorf("deleteTaskPushConfigCalls = %d, want 1", mock.deleteTaskPushConfigCalls)
+	}
+
+	if err := rc.Destroy(); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if mock.destroyCalls != 1 {
+		t.Errorf("destroyCalls = %d, want 1", mock.destroyCalls)
+	}
+}
 
 func TestRetryClient_StreamNotRetried(t *testing.T) {
 	mock := &mockA2AClient{}

@@ -554,6 +554,19 @@ func TestRunStream_JSON(t *testing.T) {
 	}
 }
 
+func TestRunStream_BuildPartsError(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{"stream", "--file", "/nonexistent/path/file.txt", ts.URL, "hello"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("expected error for non-existent file")
+	}
+}
+
 func TestRunStream_InvalidURL(t *testing.T) {
 	resetGlobalFlags(t)
 	rootCmd.SetArgs([]string{"stream", "http://127.0.0.1:1", "hello"})
