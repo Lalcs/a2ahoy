@@ -11,6 +11,7 @@ require (
 	github.com/fatih/color v1.19.0
 	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.0.9
 	golang.org/x/mod v0.33.0
 	golang.org/x/oauth2 v0.36.0
 	google.golang.org/api v0.274.0
@@ -43,7 +44,6 @@ require (
 	github.com/mattn/go-runewidth v0.0.21 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0 // indirect
