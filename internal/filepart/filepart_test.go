@@ -167,6 +167,42 @@ func TestURLParts_InvalidScheme(t *testing.T) {
 	}
 }
 
+func TestURLParts_InvalidURL(t *testing.T) {
+	// A URL with an invalid control character triggers url.Parse error.
+	_, err := URLParts([]string{string([]byte{0x7f})})
+	if err == nil {
+		t.Fatal("expected error for invalid URL")
+	}
+}
+
+func TestFileParts_FileError(t *testing.T) {
+	_, err := FileParts([]string{"/nonexistent/file"}, nil)
+	if err == nil {
+		t.Fatal("expected error for nonexistent file")
+	}
+}
+
+func TestFileParts_URLError(t *testing.T) {
+	_, err := FileParts(nil, []string{"ftp://bad-scheme"})
+	if err == nil {
+		t.Fatal("expected error for invalid URL scheme")
+	}
+}
+
+func TestBuildParts_FileError(t *testing.T) {
+	_, err := BuildParts("text", []string{"/nonexistent/file"}, nil)
+	if err == nil {
+		t.Fatal("expected error for nonexistent file")
+	}
+}
+
+func TestBuildParts_URLError(t *testing.T) {
+	_, err := BuildParts("text", nil, []string{"ftp://bad-scheme"})
+	if err == nil {
+		t.Fatal("expected error for invalid URL scheme")
+	}
+}
+
 func TestFileParts_Combined(t *testing.T) {
 	tmp := t.TempDir()
 	fp := filepath.Join(tmp, "test.txt")
