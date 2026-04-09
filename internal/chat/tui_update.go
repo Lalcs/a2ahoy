@@ -221,7 +221,9 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 		return m.dispatchSlash(sc)
 	}
 
-	// Regular message → kick off the streaming turn.
-	req := BuildChatRequest(&m.state, text)
+	// Regular message → kick off the streaming turn. Attach initial
+	// file parts on the first turn only, then clear them.
+	req := BuildChatRequest(&m.state, text, m.initialParts...)
+	m.initialParts = nil
 	return m.startStream(req)
 }

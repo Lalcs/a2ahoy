@@ -204,6 +204,52 @@ func TestBuildChatRequest_Continuation(t *testing.T) {
 	}
 }
 
+func TestBuildChatRequest_WithExtraParts(t *testing.T) {
+	var s State
+	extra1 := a2a.NewRawPart([]byte("file-data"))
+	extra1.Filename = "test.png"
+	extra2 := a2a.NewFileURLPart("https://example.com/doc.pdf", "")
+
+	req := BuildChatRequest(&s, "analyze", extra1, extra2)
+	if req == nil || req.Message == nil {
+		t.Fatal("BuildChatRequest returned nil request or message")
+	}
+	if len(req.Message.Parts) != 3 {
+		t.Fatalf("message Parts: got %d, want 3", len(req.Message.Parts))
+	}
+	// Text part first.
+	if got := req.Message.Parts[0].Text(); got != "analyze" {
+		t.Errorf("parts[0].Text() = %q, want %q", got, "analyze")
+	}
+	// File part second.
+	if got := req.Message.Parts[1].Filename; got != "test.png" {
+		t.Errorf("parts[1].Filename = %q, want %q", got, "test.png")
+	}
+	// URL part third.
+	if got := req.Message.Parts[2].URL(); got != "https://example.com/doc.pdf" {
+		t.Errorf("parts[2].URL() = %q, want %q", got, "https://example.com/doc.pdf")
+	}
+}
+
+func TestBuildChatRequest_ContinuationWithExtraParts(t *testing.T) {
+	s := stateWith("task-10", "ctx-10")
+	extra := a2a.NewRawPart([]byte("data"))
+
+	req := BuildChatRequest(&s, "more info", extra)
+	if req == nil || req.Message == nil {
+		t.Fatal("BuildChatRequest returned nil request or message")
+	}
+	if req.Message.TaskID != "task-10" {
+		t.Errorf("message TaskID: got %q, want %q", req.Message.TaskID, "task-10")
+	}
+	if len(req.Message.Parts) != 2 {
+		t.Fatalf("message Parts: got %d, want 2", len(req.Message.Parts))
+	}
+	if got := req.Message.Parts[0].Text(); got != "more info" {
+		t.Errorf("parts[0].Text() = %q, want %q", got, "more info")
+	}
+}
+
 func TestFilterSuggestions(t *testing.T) {
 	tests := []struct {
 		name    string

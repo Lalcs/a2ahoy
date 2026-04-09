@@ -4,6 +4,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestExecute_NoArgs(t *testing.T) {
@@ -216,6 +218,30 @@ func TestChatCommand_HasSimpleFlag(t *testing.T) {
 	}
 	if got := f.Value.Type(); got != "bool" {
 		t.Errorf("--simple flag type: got %q, want %q", got, "bool")
+	}
+}
+
+func TestCommands_HaveFileFlags(t *testing.T) {
+	cmds := []struct {
+		name string
+		cmd  *cobra.Command
+	}{
+		{"send", sendCmd},
+		{"stream", streamCmd},
+		{"chat", chatCmd},
+	}
+	for _, tt := range cmds {
+		for _, flag := range []string{"file", "file-url"} {
+			t.Run(tt.name+"/"+flag, func(t *testing.T) {
+				f := tt.cmd.Flags().Lookup(flag)
+				if f == nil {
+					t.Fatalf("%s command missing --%s flag", tt.name, flag)
+				}
+				if got := f.Value.Type(); got != "stringArray" {
+					t.Errorf("--%s flag type: got %q, want %q", flag, got, "stringArray")
+				}
+			})
+		}
 	}
 }
 

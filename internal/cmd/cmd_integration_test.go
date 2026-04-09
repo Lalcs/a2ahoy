@@ -34,6 +34,12 @@ func resetGlobalFlags(t *testing.T) {
 	flagUpdateCheckOnly = false
 	flagUpdateForce = false
 	flagChatSimple = false
+	flagSendFiles = nil
+	flagSendFileURLs = nil
+	flagStreamFiles = nil
+	flagStreamFileURLs = nil
+	flagChatFiles = nil
+	flagChatFileURLs = nil
 	// Prevent env var leakage from ambient environment.
 	t.Setenv(bearerTokenEnvVar, "")
 	// Reset Changed state on subcommand-local flags so tests are
@@ -1940,5 +1946,113 @@ func TestRunPushDelete_InvalidURL(t *testing.T) {
 
 	if err := rootCmd.Execute(); err == nil {
 		t.Fatal("expected error for unreachable URL")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// --file / --file-url flags
+// ---------------------------------------------------------------------------
+
+func TestRunSend_WithFile(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	tmp := t.TempDir()
+	fp := filepath.Join(tmp, "test.txt")
+	if err := os.WriteFile(fp, []byte("file content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rootCmd.SetArgs([]string{"send", ts.URL, "analyze this", "--file", fp})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("send --file failed: %v", err)
+	}
+}
+
+func TestRunSend_WithFileURL(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{"send", ts.URL, "check url", "--file-url", "https://example.com/data.csv"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("send --file-url failed: %v", err)
+	}
+}
+
+func TestRunSend_WithMultipleFiles(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	tmp := t.TempDir()
+	f1 := filepath.Join(tmp, "a.txt")
+	f2 := filepath.Join(tmp, "b.pdf")
+	if err := os.WriteFile(f1, []byte("aaa"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f2, []byte("bbb"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rootCmd.SetArgs([]string{"send", ts.URL, "multi", "--file", f1, "--file", f2})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("send --file --file failed: %v", err)
+	}
+}
+
+func TestRunSend_FileNotFound(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{"send", ts.URL, "oops", "--file", "/nonexistent/file.txt"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for nonexistent file")
+	}
+	if !strings.Contains(err.Error(), "/nonexistent/file.txt") {
+		t.Errorf("error %q should mention the file path", err)
+	}
+}
+
+func TestRunStream_WithFile(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	tmp := t.TempDir()
+	fp := filepath.Join(tmp, "test.png")
+	if err := os.WriteFile(fp, []byte("png-data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rootCmd.SetArgs([]string{"stream", ts.URL, "look at this", "--file", fp})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("stream --file failed: %v", err)
+	}
+}
+
+func TestRunStream_WithFileURL(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{"stream", ts.URL, "check", "--file-url", "https://example.com/img.png"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("stream --file-url failed: %v", err)
 	}
 }

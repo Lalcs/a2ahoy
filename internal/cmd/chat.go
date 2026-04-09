@@ -7,7 +7,13 @@ import (
 
 	"github.com/Lalcs/a2ahoy/internal/chat"
 	"github.com/Lalcs/a2ahoy/internal/client"
+	"github.com/Lalcs/a2ahoy/internal/filepart"
 	"github.com/spf13/cobra"
+)
+
+var (
+	flagChatFiles    []string
+	flagChatFileURLs []string
 )
 
 var flagChatSimple bool
@@ -34,6 +40,8 @@ Slash commands: /new, /get, /cancel, /help, /exit, /quit.`,
 func init() {
 	chatCmd.Flags().BoolVar(&flagChatSimple, "simple", false,
 		"Use a line-mode REPL (bufio.Scanner) instead of the TUI. IME-safe fallback.")
+	chatCmd.Flags().StringArrayVar(&flagChatFiles, "file", nil, "Attach a local file to the first turn (repeatable)")
+	chatCmd.Flags().StringArrayVar(&flagChatFileURLs, "file-url", nil, "Attach a file by URL to the first turn (repeatable)")
 	rootCmd.AddCommand(chatCmd)
 }
 
@@ -53,13 +61,22 @@ func runChat(cmd *cobra.Command, args []string) error {
 	}
 	defer a2aClient.Destroy()
 
+	// Load initial file parts from --file / --file-url flags. These
+	// are attached to the first chat turn only; subsequent turns are
+	// text-only. Per-turn attachment via a /file slash command is a
+	// future enhancement.
+	initialParts, err := filepart.FileParts(flagChatFiles, flagChatFileURLs)
+	if err != nil {
+		return err
+	}
+
 	// --json is incompatible with the full-screen TUI; fall back to
 	// simple mode silently so existing --json pipelines continue to
 	// work when users add `chat` to their scripts.
 	useSimple := flagChatSimple || flagJSON
 
 	if useSimple {
-		return chat.RunSimple(ctx, a2aClient, card, baseURL, flagJSON)
+		return chat.RunSimple(ctx, a2aClient, card, baseURL, flagJSON, initialParts)
 	}
-	return chat.RunTUI(ctx, a2aClient, card, baseURL)
+	return chat.RunTUI(ctx, a2aClient, card, baseURL, initialParts)
 }

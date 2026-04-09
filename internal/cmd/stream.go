@@ -7,9 +7,15 @@ import (
 	"os/signal"
 
 	"github.com/Lalcs/a2ahoy/internal/client"
+	"github.com/Lalcs/a2ahoy/internal/filepart"
 	"github.com/Lalcs/a2ahoy/internal/presenter"
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/spf13/cobra"
+)
+
+var (
+	flagStreamFiles    []string
+	flagStreamFileURLs []string
 )
 
 var streamCmd = &cobra.Command{
@@ -29,6 +35,8 @@ var newStreamContext = func() (context.Context, context.CancelFunc) {
 }
 
 func init() {
+	streamCmd.Flags().StringArrayVar(&flagStreamFiles, "file", nil, "Attach a local file (repeatable)")
+	streamCmd.Flags().StringArrayVar(&flagStreamFileURLs, "file-url", nil, "Attach a file by URL (repeatable)")
 	rootCmd.AddCommand(streamCmd)
 }
 
@@ -45,7 +53,12 @@ func runStream(cmd *cobra.Command, args []string) error {
 	}
 	defer a2aClient.Destroy()
 
-	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart(text))
+	parts, err := filepart.BuildParts(text, flagStreamFiles, flagStreamFileURLs)
+	if err != nil {
+		return err
+	}
+
+	msg := a2a.NewMessage(a2a.MessageRoleUser, parts...)
 	req := &a2a.SendMessageRequest{
 		Message: msg,
 	}

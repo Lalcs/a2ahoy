@@ -86,6 +86,10 @@ type Model struct {
 	streamBuf    strings.Builder
 	lastTurnInfo a2a.TaskInfo
 
+	// File parts to attach to the first turn only (from --file / --file-url).
+	// Consumed on the first submitInput, then set to nil.
+	initialParts []*a2a.Part
+
 	// Layout.
 	width, height int
 	ready         bool // true once we have received at least one WindowSizeMsg
@@ -94,7 +98,7 @@ type Model struct {
 // newModel constructs a Model wired to the given client and card.
 // The textinput is focused immediately so the user can start typing
 // without any additional key press.
-func newModel(ctx context.Context, c client.A2AClient, card *a2a.AgentCard) Model {
+func newModel(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, initialParts []*a2a.Part) Model {
 	ti := textinput.New()
 	ti.Prompt = "› "
 	// No Placeholder: in a terminal TUI the OS-level IME draws its
@@ -118,12 +122,13 @@ func newModel(ctx context.Context, c client.A2AClient, card *a2a.AgentCard) Mode
 	sp.Style = spinnerStyle
 
 	return Model{
-		ctx:       ctx,
-		client:    c,
-		agentCard: card,
-		viewport:  vp,
-		textInput: ti,
-		spinner:   sp,
+		ctx:          ctx,
+		client:       c,
+		agentCard:    card,
+		initialParts: initialParts,
+		viewport:     vp,
+		textInput:    ti,
+		spinner:      sp,
 	}
 }
 
