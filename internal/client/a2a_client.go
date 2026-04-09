@@ -25,6 +25,9 @@ type A2AClient interface {
 	// tasks already in a terminal state.
 	CancelTask(ctx context.Context, req *a2a.CancelTaskRequest) (*a2a.Task, error)
 
+	// ListTasks lists tasks with optional filtering and pagination.
+	ListTasks(ctx context.Context, req *a2a.ListTasksRequest) (*a2a.ListTasksResponse, error)
+
 	// Destroy releases any resources held by the client.
 	Destroy() error
 }

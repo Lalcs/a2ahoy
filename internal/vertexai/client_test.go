@@ -3,6 +3,7 @@ package vertexai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -1653,5 +1654,18 @@ func TestClient_SendStreamingMessage_StreamRequestBody(t *testing.T) {
 	}
 	if captured.Message.MessageID == "" {
 		t.Error("stream request Message.MessageID: got empty, want auto-generated UUID")
+	}
+}
+
+func TestClient_ListTasks_NotSupported(t *testing.T) {
+	c, server := newTestClient(t, http.NewServeMux())
+	defer server.Close()
+
+	_, err := c.ListTasks(context.Background(), &a2a.ListTasksRequest{})
+	if err == nil {
+		t.Fatal("expected error for ListTasks on Vertex AI")
+	}
+	if !errors.Is(err, ErrListTasksNotSupported) {
+		t.Errorf("expected ErrListTasksNotSupported, got: %v", err)
 	}
 }

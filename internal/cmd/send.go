@@ -13,7 +13,7 @@ import (
 var sendCmd = &cobra.Command{
 	Use:   "send <agent-url> <message>",
 	Short: "Send a message to an A2A agent",
-	Long:  "Sends a message via the message/send JSON-RPC method and displays the result.",
+	Long:  "Sends a message via the SendMessage method and displays the result.",
 	Args:  cobra.ExactArgs(2),
 	RunE:  runSend,
 }
@@ -27,14 +27,7 @@ func runSend(cmd *cobra.Command, args []string) error {
 	baseURL := args[0]
 	text := args[1]
 
-	a2aClient, _, err := client.New(ctx, client.Options{
-		BaseURL:      baseURL,
-		GCPAuth:      flagGCPAuth,
-		VertexAI:     flagVertexAI,
-		V03RESTMount: flagV03RESTMount,
-		Headers:      flagHeaders,
-		BearerToken:  flagBearerToken,
-	})
+	a2aClient, _, err := client.New(ctx, clientOptions(baseURL))
 	if err != nil {
 		return err
 	}
@@ -47,7 +40,7 @@ func runSend(cmd *cobra.Command, args []string) error {
 
 	result, err := a2aClient.SendMessage(ctx, req)
 	if err != nil {
-		return fmt.Errorf("message/send failed: %w", err)
+		return fmt.Errorf("SendMessage failed: %w", err)
 	}
 
 	out := cmd.OutOrStdout()

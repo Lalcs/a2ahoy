@@ -13,8 +13,8 @@ import (
 var cancelCmd = &cobra.Command{
 	Use:   "cancel <agent-url> <task-id>",
 	Short: "Cancel a task by ID on an A2A agent",
-	Long: `Cancels a task via the tasks/cancel (CancelTask) protocol method
-and displays the updated task state.
+	Long: `Cancels a task via the CancelTask protocol method and displays
+the updated task state.
 
 Tasks already in a terminal state (completed, failed, canceled, rejected)
 cannot be canceled; the server returns an error in that case.`,
@@ -31,14 +31,7 @@ func runCancel(cmd *cobra.Command, args []string) error {
 	baseURL := args[0]
 	taskID := args[1]
 
-	a2aClient, _, err := client.New(ctx, client.Options{
-		BaseURL:      baseURL,
-		GCPAuth:      flagGCPAuth,
-		VertexAI:     flagVertexAI,
-		V03RESTMount: flagV03RESTMount,
-		Headers:      flagHeaders,
-		BearerToken:  flagBearerToken,
-	})
+	a2aClient, _, err := client.New(ctx, clientOptions(baseURL))
 	if err != nil {
 		return err
 	}
@@ -50,7 +43,7 @@ func runCancel(cmd *cobra.Command, args []string) error {
 
 	task, err := a2aClient.CancelTask(ctx, req)
 	if err != nil {
-		return fmt.Errorf("tasks/cancel failed: %w", err)
+		return fmt.Errorf("CancelTask failed: %w", err)
 	}
 
 	out := cmd.OutOrStdout()

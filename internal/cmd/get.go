@@ -17,7 +17,7 @@ const flagNameHistoryLength = "history-length"
 var getCmd = &cobra.Command{
 	Use:   "get <agent-url> <task-id>",
 	Short: "Retrieve a task by ID from an A2A agent",
-	Long: `Retrieves a task via the tasks/get (GetTask) protocol method and displays it.
+	Long: `Retrieves a task via the GetTask protocol method and displays it.
 
 Use --history-length to limit the number of historical messages returned.`,
 	Args: cobra.ExactArgs(2),
@@ -35,14 +35,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	baseURL := args[0]
 	taskID := args[1]
 
-	a2aClient, _, err := client.New(ctx, client.Options{
-		BaseURL:      baseURL,
-		GCPAuth:      flagGCPAuth,
-		VertexAI:     flagVertexAI,
-		V03RESTMount: flagV03RESTMount,
-		Headers:      flagHeaders,
-		BearerToken:  flagBearerToken,
-	})
+	a2aClient, _, err := client.New(ctx, clientOptions(baseURL))
 	if err != nil {
 		return err
 	}
@@ -62,7 +55,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	task, err := a2aClient.GetTask(ctx, req)
 	if err != nil {
-		return fmt.Errorf("tasks/get failed: %w", err)
+		return fmt.Errorf("GetTask failed: %w", err)
 	}
 
 	out := cmd.OutOrStdout()

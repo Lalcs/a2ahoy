@@ -91,7 +91,7 @@ func (m Model) handleGet(arg string) (tea.Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		task, err := c.GetTask(ctx, &a2a.GetTaskRequest{ID: targetID})
 		if err != nil {
-			return errDisplayMsg{msg: fmt.Sprintf("tasks/get failed: %v", err)}
+			return errDisplayMsg{msg: fmt.Sprintf("GetTask failed: %v", err)}
 		}
 		return slashResultMsg{verb: "get", task: task}
 	}
@@ -107,7 +107,7 @@ func (m Model) handleCancel(arg string) (tea.Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		task, err := c.CancelTask(ctx, &a2a.CancelTaskRequest{ID: targetID})
 		if err != nil {
-			return errDisplayMsg{msg: fmt.Sprintf("tasks/cancel failed: %v", err)}
+			return errDisplayMsg{msg: fmt.Sprintf("CancelTask failed: %v", err)}
 		}
 		return slashResultMsg{verb: "cancel", task: task}
 	}

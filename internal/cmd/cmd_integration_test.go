@@ -185,6 +185,19 @@ func a2aTestServer(t *testing.T) *httptest.Server {
 			result := rawTaskJSON("task-cancel-1", "ctx-cancel", "TASK_STATE_CANCELED")
 			w.Write(jsonRPCResponse(req.ID, result))
 
+		case "ListTasks":
+			w.Header().Set("Content-Type", "application/json")
+			result := json.RawMessage(`{
+				"tasks": [
+					{"id": "task-list-1", "contextId": "ctx-list-1", "status": {"state": "TASK_STATE_COMPLETED"}},
+					{"id": "task-list-2", "contextId": "ctx-list-2", "status": {"state": "TASK_STATE_WORKING"}}
+				],
+				"totalSize": 2,
+				"pageSize": 50,
+				"nextPageToken": ""
+			}`)
+			w.Write(jsonRPCResponse(req.ID, result))
+
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			errResp := fmt.Sprintf(`{"jsonrpc":"2.0","id":%q,"error":{"code":-32601,"message":"method not found"}}`, req.ID)
@@ -404,8 +417,8 @@ func TestRunSend_ServerError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for server error response")
 	}
-	if !strings.Contains(err.Error(), "message/send failed") {
-		t.Errorf("expected message/send failed error, got: %v", err)
+	if !strings.Contains(err.Error(), "SendMessage failed") {
+		t.Errorf("expected SendMessage failed error, got: %v", err)
 	}
 }
 
@@ -572,8 +585,8 @@ func TestRunGet_ServerError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for get with server error")
 	}
-	if !strings.Contains(err.Error(), "tasks/get failed") {
-		t.Errorf("expected tasks/get failed error, got: %v", err)
+	if !strings.Contains(err.Error(), "GetTask failed") {
+		t.Errorf("expected GetTask failed error, got: %v", err)
 	}
 }
 
@@ -647,8 +660,125 @@ func TestRunCancel_ServerError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for cancel with server error")
 	}
-	if !strings.Contains(err.Error(), "tasks/cancel failed") {
-		t.Errorf("expected tasks/cancel failed error, got: %v", err)
+	if !strings.Contains(err.Error(), "CancelTask failed") {
+		t.Errorf("expected CancelTask failed error, got: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// runList
+// ---------------------------------------------------------------------------
+
+func TestRunList_HumanReadable(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	var buf strings.Builder
+	rootCmd.SetArgs([]string{"list", ts.URL})
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runList human-readable failed: %v", err)
+	}
+
+	got := buf.String()
+	checks := []string{
+		"Tasks (2 of 2 total)",
+		"task-list-1",
+		"task-list-2",
+		"TASK_STATE_COMPLETED",
+		"TASK_STATE_WORKING",
+	}
+	for _, want := range checks {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in output:\n%s", want, got)
+		}
+	}
+}
+
+func TestRunList_JSON(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	var buf strings.Builder
+	rootCmd.SetArgs([]string{"--json", "list", ts.URL})
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runList --json failed: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, `"task-list-1"`) {
+		t.Errorf("missing task-list-1 in JSON output:\n%s", got)
+	}
+	if !strings.Contains(got, `"totalSize"`) {
+		t.Errorf("missing totalSize in JSON output:\n%s", got)
+	}
+}
+
+func TestRunList_WithFilters(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{
+		"list", ts.URL,
+		"--context-id", "ctx-list-1",
+		"--status", "TASK_STATE_COMPLETED",
+		"--page-size", "10",
+	})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runList with filters failed: %v", err)
+	}
+}
+
+func TestRunList_InvalidURL(t *testing.T) {
+	resetGlobalFlags(t)
+	rootCmd.SetArgs([]string{"list", "http://127.0.0.1:1"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("expected error for unreachable URL")
+	}
+}
+
+func TestRunList_ServerError(t *testing.T) {
+	resetGlobalFlags(t)
+
+	var ts *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, v1CardJSON(ts.URL))
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			ID string `json:"id"`
+		}
+		json.Unmarshal(body, &req)
+		fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%q,"error":{"code":-32603,"message":"internal error"}}`, req.ID)
+	})
+	ts = httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	rootCmd.SetArgs([]string{"list", ts.URL})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for list with server error")
+	}
+	if !strings.Contains(err.Error(), "ListTasks failed") {
+		t.Errorf("expected ListTasks failed error, got: %v", err)
 	}
 }
 

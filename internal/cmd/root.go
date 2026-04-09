@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Lalcs/a2ahoy/internal/client"
 	"github.com/Lalcs/a2ahoy/internal/version"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -69,6 +70,20 @@ func init() {
 	// e.g. --header "Accept=application/json, text/plain".
 	rootCmd.PersistentFlags().StringArrayVar(&flagHeaders, "header", nil, "Add a custom HTTP header in KEY=VALUE form (repeatable)")
 	rootCmd.PersistentFlags().StringVar(&flagBearerToken, "bearer-token", "", "Bearer token for Authorization header (falls back to A2A_BEARER_TOKEN env var)")
+}
+
+// clientOptions builds a client.Options from the global persistent flags and
+// the given base URL. All commands that call client.New share this builder so
+// new flags are wired in exactly one place.
+func clientOptions(baseURL string) client.Options {
+	return client.Options{
+		BaseURL:      baseURL,
+		GCPAuth:      flagGCPAuth,
+		VertexAI:     flagVertexAI,
+		V03RESTMount: flagV03RESTMount,
+		Headers:      flagHeaders,
+		BearerToken:  flagBearerToken,
+	}
 }
 
 // Execute runs the root command.

@@ -173,6 +173,30 @@ a2ahoy cancel https://example.com task-abc-123 --json
 
 > **Note**: Tasks already in a terminal state (completed, failed, canceled, rejected) cannot be canceled.
 
+### `list` — List tasks from an agent
+
+Lists tasks with optional filtering and pagination via the `ListTasks` protocol method.
+
+```bash
+a2ahoy list https://example.com
+a2ahoy list https://example.com --context-id ctx-123 --status TASK_STATE_COMPLETED
+a2ahoy list https://example.com --page-size 10 --json
+```
+
+**Flags:**
+
+| Flag                  | Description                                                                      |
+|-----------------------|----------------------------------------------------------------------------------|
+| `--context-id`        | Filter tasks by context ID                                                       |
+| `--status`            | Filter tasks by state (e.g., `TASK_STATE_COMPLETED`, `TASK_STATE_WORKING`)       |
+| `--page-size`         | Maximum number of tasks per page (1-100; omit to use server default)             |
+| `--page-token`        | Continuation token from a prior response's `nextPageToken`                       |
+| `--history-length`    | Maximum number of history messages per task (omit to use server default)          |
+| `--include-artifacts` | Include artifacts in the response                                                |
+| `--status-after`      | Filter tasks updated after this time (RFC3339, e.g., `2026-01-01T00:00:00Z`)    |
+
+> **Note**: `list` is not supported on Vertex AI Agent Engine endpoints (`--vertex-ai`).
+
 ### `update` — Self-update from GitHub releases
 
 Fetches the latest release from [Lalcs/a2ahoy](https://github.com/Lalcs/a2ahoy) and replaces the running binary with the new version if a newer one is available.
@@ -252,7 +276,7 @@ auto-selects a transport from the agent card advertised by the server.
 | A2A version | JSON-RPC over HTTP | HTTP+JSON (REST) | gRPC    |
 |-------------|--------------------|------------------|---------|
 | v0.3.x      | Supported          | Supported\*      | Planned |
-| v1.0        | Planned            | Planned          | Planned |
+| v1.0        | Supported          | Supported        | Planned |
 
 In addition, Vertex AI Agent Engine endpoints are supported through a
 dedicated client that speaks a Vertex-specific HTTP+JSON wire format. Enable
@@ -261,18 +285,17 @@ it with `--vertex-ai`; see the next section for details.
 > **Note**: \*Some v0.3 servers (Python `a2a-sdk`, Google ADK's `to_a2a()`,
 > Vertex AI Agent Engine's non-Vertex route) mount HTTP+JSON routes under a
 > `/v1` prefix that their agent cards do not advertise. Pass `--v03-rest-mount`
-> to rewrite card URLs client-side so `send` / `stream` / `get` / `cancel`
+> to rewrite card URLs client-side so `send` / `stream` / `get` / `cancel` / `list`
 > resolve against the correct path. Native a2a-go v0.3 servers that advertise
 > the full URL should be addressed as-is (the default).
 
 > **Note**: A2A v1.0 changes the JSON-RPC method names (`SendMessage` instead
-> of `message/send`, etc.) and REST endpoint layout relative to v0.3. Native
-> v1.0 server implementations are not yet available in the wider ecosystem,
-> so v1.0 rows are marked as `Planned` until end-to-end support is verified.
-> gRPC is recognised by the agent-card validator but not yet wired into the
-> client transport layer. A2A protocol versions older than v0.3 (e.g. v0.2.x)
-> are not supported because the upstream `a2a-go` compat library does not
-> parse them.
+> of `message/send`, etc.) and REST endpoint layout relative to v0.3. v1.0
+> support is provided via `a2a-go/v2` which auto-selects v1.0 transports when
+> the server's agent card advertises them. gRPC is recognised by the agent-card
+> validator but not yet wired into the client transport layer. A2A protocol
+> versions older than v0.3 (e.g. v0.2.x) are not supported because the upstream
+> `a2a-go` compat library does not parse them.
 
 ### Vertex AI Agent Engine
 

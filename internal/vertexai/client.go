@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -17,6 +18,10 @@ import (
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2acompat/a2av0"
 )
+
+// ErrListTasksNotSupported is returned when ListTasks is called on a
+// Vertex AI Agent Engine client, which does not expose this operation.
+var ErrListTasksNotSupported = errors.New("ListTasks is not supported by Vertex AI Agent Engine")
 
 // Client communicates with a Vertex AI Agent Engine A2A endpoint.
 // It translates between standard a2a.* types and the Vertex AI
@@ -321,6 +326,11 @@ func (c *Client) CancelTask(ctx context.Context, a2aReq *a2a.CancelTaskRequest) 
 		return nil, fmt.Errorf("failed to decode cancel response: %w", err)
 	}
 	return toA2ATask(wireResp), nil
+}
+
+// ListTasks is not supported by Vertex AI Agent Engine.
+func (c *Client) ListTasks(_ context.Context, _ *a2a.ListTasksRequest) (*a2a.ListTasksResponse, error) {
+	return nil, ErrListTasksNotSupported
 }
 
 // Destroy is a no-op for the Vertex AI client (no persistent resources).

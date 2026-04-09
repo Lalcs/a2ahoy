@@ -15,7 +15,7 @@ import (
 var streamCmd = &cobra.Command{
 	Use:   "stream <agent-url> <message>",
 	Short: "Stream a message to an A2A agent via SSE",
-	Long:  "Sends a message via the message/stream method and displays events in real-time.",
+	Long:  "Sends a message via the SendStreamingMessage method and displays events in real-time.",
 	Args:  cobra.ExactArgs(2),
 	RunE:  runStream,
 }
@@ -39,14 +39,7 @@ func runStream(cmd *cobra.Command, args []string) error {
 	baseURL := args[0]
 	text := args[1]
 
-	a2aClient, _, err := client.New(ctx, client.Options{
-		BaseURL:      baseURL,
-		GCPAuth:      flagGCPAuth,
-		VertexAI:     flagVertexAI,
-		V03RESTMount: flagV03RESTMount,
-		Headers:      flagHeaders,
-		BearerToken:  flagBearerToken,
-	})
+	a2aClient, _, err := client.New(ctx, clientOptions(baseURL))
 	if err != nil {
 		return err
 	}
