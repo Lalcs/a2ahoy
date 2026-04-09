@@ -3,7 +3,9 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Lalcs/a2ahoy/internal/auth"
 	"github.com/Lalcs/a2ahoy/internal/vertexai"
@@ -41,6 +43,21 @@ type Options struct {
 	// BearerToken is a static bearer token from --bearer-token or
 	// A2A_BEARER_TOKEN. Mutually exclusive with GCPAuth and VertexAI.
 	BearerToken string
+	// Timeout overrides the HTTP client timeout for all transports.
+	// Zero means use library defaults (30s card resolution, 3min for both standard and Vertex AI).
+	Timeout time.Duration
+	// MaxRetries is the maximum number of retries for failed non-streaming requests.
+	// Zero means no retry.
+	MaxRetries int
+}
+
+// httpClientFromTimeout returns an *http.Client with the given timeout,
+// or nil when d is zero (signaling "use library default").
+func httpClientFromTimeout(d time.Duration) *http.Client {
+	if d == 0 {
+		return nil
+	}
+	return &http.Client{Timeout: d}
 }
 
 // New creates an A2A client and resolves the agent card.
@@ -48,11 +65,16 @@ type Options struct {
 // OAuth2 access token authentication. Otherwise, it creates a standard
 // A2A client optionally with GCP ID token authentication.
 func New(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, error) {
+	var c A2AClient
+	var card *a2a.AgentCard
+	var err error
+
 	if opts.VertexAI {
 		// resolveVertexAICard returns a concrete *vertexai.Client, which
 		// satisfies A2AClient. Tuple return types must match exactly, so
 		// we destructure and re-return rather than forwarding directly.
-		vc, card, err := resolveVertexAICard(ctx, opts)
+		var vc *vertexai.Client
+		vc, card, err = resolveVertexAICard(ctx, opts)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -65,9 +87,19 @@ func New(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, error) {
 		if opts.V03RESTMount {
 			applyV03RESTMountPrefix(card)
 		}
-		return vc, card, nil
+		c = vc
+	} else {
+		c, card, err = newStandard(ctx, opts)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
-	return newStandard(ctx, opts)
+
+	if opts.MaxRetries > 0 {
+		c = &retryClient{inner: c, maxRetries: opts.MaxRetries}
+	}
+
+	return c, card, nil
 }
 
 // resolveVertexAICard parses the Vertex AI endpoint, configures the GCP
@@ -89,7 +121,7 @@ func resolveVertexAICard(ctx context.Context, opts Options) (*vertexai.Client, *
 		return nil, nil, fmt.Errorf("GCP access token auth setup failed: %w", err)
 	}
 
-	vc := vertexai.NewClient(endpoint, interceptor.GetToken)
+	vc := vertexai.NewClient(endpoint, interceptor.GetToken, httpClientFromTimeout(opts.Timeout))
 
 	if err := applyVertexAIHeaders(vc, opts.Headers); err != nil {
 		return nil, nil, err
@@ -292,26 +324,44 @@ func resolveStandardCard(ctx context.Context, opts Options) (*a2a.AgentCard, []a
 		clientOpts = append(clientOpts, a2aclient.WithCallInterceptors(auth.NewHeaderInterceptor(headerEntries)))
 	}
 
+	// When a custom timeout is specified, override the default v1.0
+	// transports with ones using the custom HTTP client. When hc is nil
+	// (timeout=0), the library's auto-registered defaults (3min) are used.
+	hc := httpClientFromTimeout(opts.Timeout)
+	if hc != nil {
+		clientOpts = append(clientOpts,
+			a2aclient.WithJSONRPCTransport(hc),
+			a2aclient.WithRESTTransport(hc),
+		)
+	}
+
 	// Register v0.3 compat transports in addition to the auto-registered
 	// v1.0 transports. selectTransport prefers newer protocol versions, so
 	// v1.0 servers continue to use v1.0 transports without regression.
+	// When hc is nil the config's zero Client falls back to the library
+	// default (3min timeout).
 	clientOpts = append(clientOpts,
 		a2aclient.WithCompatTransport(
 			a2av0.Version,
 			a2a.TransportProtocolJSONRPC,
-			a2av0.NewJSONRPCTransportFactory(a2av0.JSONRPCTransportConfig{}),
+			a2av0.NewJSONRPCTransportFactory(a2av0.JSONRPCTransportConfig{Client: hc}),
 		),
 		a2aclient.WithCompatTransport(
 			a2av0.Version,
 			a2a.TransportProtocolHTTPJSON,
-			a2av0.NewRESTTransportFactory(a2av0.RESTTransportConfig{}),
+			a2av0.NewRESTTransportFactory(a2av0.RESTTransportConfig{Client: hc}),
 		),
 	)
 
 	// Use a Resolver with the v0 compat card parser. The parser handles
-	// both v0.3 and v1.0 card formats via a union struct.
+	// both v0.3 and v1.0 card formats via a union struct. When a custom
+	// timeout is specified, the resolver uses the same HTTP client.
+	resolverClient := agentcard.DefaultResolver.Client
+	if hc != nil {
+		resolverClient = hc
+	}
 	resolver := &agentcard.Resolver{
-		Client:     agentcard.DefaultResolver.Client,
+		Client:     resolverClient,
 		CardParser: a2av0.NewAgentCardParser(),
 	}
 	card, err := resolver.Resolve(ctx, opts.BaseURL, resolveOpts...)

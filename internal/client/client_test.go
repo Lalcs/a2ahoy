@@ -796,7 +796,7 @@ func TestResolveCard_GCPAuth_Error(t *testing.T) {
 
 func TestApplyVertexAIHeaders_Empty(t *testing.T) {
 	ep, _ := vertexai.ParseEndpoint("https://example.com/v1beta1/projects/1/locations/us/reasoningEngines/1")
-	vc := vertexai.NewClient(ep, func() (string, error) { return "tok", nil })
+	vc := vertexai.NewClient(ep, func() (string, error) { return "tok", nil }, nil)
 
 	// Empty headers → no-op, no error.
 	if err := applyVertexAIHeaders(vc, nil); err != nil {
@@ -809,7 +809,7 @@ func TestApplyVertexAIHeaders_Empty(t *testing.T) {
 
 func TestApplyVertexAIHeaders_Valid(t *testing.T) {
 	ep, _ := vertexai.ParseEndpoint("https://example.com/v1beta1/projects/1/locations/us/reasoningEngines/1")
-	vc := vertexai.NewClient(ep, func() (string, error) { return "tok", nil })
+	vc := vertexai.NewClient(ep, func() (string, error) { return "tok", nil }, nil)
 
 	if err := applyVertexAIHeaders(vc, []string{"X-Custom=val"}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -818,7 +818,7 @@ func TestApplyVertexAIHeaders_Valid(t *testing.T) {
 
 func TestApplyVertexAIHeaders_InvalidEntry(t *testing.T) {
 	ep, _ := vertexai.ParseEndpoint("https://example.com/v1beta1/projects/1/locations/us/reasoningEngines/1")
-	vc := vertexai.NewClient(ep, func() (string, error) { return "tok", nil })
+	vc := vertexai.NewClient(ep, func() (string, error) { return "tok", nil }, nil)
 
 	err := applyVertexAIHeaders(vc, []string{"no-equals"})
 	if err == nil {

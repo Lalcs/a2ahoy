@@ -30,13 +30,11 @@ func runCard(cmd *cobra.Command, args []string) error {
 	// a full A2A client is unnecessary and would fail on v0.3-only servers
 	// that lack supportedInterfaces. ResolveCard handles both v1.0 and v0.3
 	// formats and skips client creation entirely.
-	card, err := client.ResolveCard(ctx, client.Options{
-		BaseURL:     baseURL,
-		GCPAuth:     flagGCPAuth,
-		VertexAI:    flagVertexAI,
-		Headers:     flagHeaders,
-		BearerToken: flagBearerToken,
-	})
+	// V03RESTMount is intentionally disabled so the card subcommand
+	// displays raw URLs from the server rather than rewritten URLs.
+	opts := clientOptions(baseURL)
+	opts.V03RESTMount = false
+	card, err := client.ResolveCard(ctx, opts)
 	if err != nil {
 		return err
 	}

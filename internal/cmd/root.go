@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Lalcs/a2ahoy/internal/client"
 	"github.com/Lalcs/a2ahoy/internal/version"
@@ -22,6 +23,8 @@ var (
 	flagNoColor      bool
 	flagHeaders      []string
 	flagBearerToken  string
+	flagTimeout      time.Duration
+	flagRetry        int
 )
 
 var rootCmd = &cobra.Command{
@@ -44,6 +47,12 @@ var rootCmd = &cobra.Command{
 		}
 		if flagBearerToken != "" && flagVertexAI {
 			return fmt.Errorf("--bearer-token and --vertex-ai cannot be used together")
+		}
+		if flagTimeout < 0 {
+			return fmt.Errorf("--timeout must be non-negative, got %s", flagTimeout)
+		}
+		if flagRetry < 0 {
+			return fmt.Errorf("--retry must be non-negative, got %d", flagRetry)
 		}
 		return nil
 	},
@@ -70,6 +79,8 @@ func init() {
 	// e.g. --header "Accept=application/json, text/plain".
 	rootCmd.PersistentFlags().StringArrayVar(&flagHeaders, "header", nil, "Add a custom HTTP header in KEY=VALUE form (repeatable)")
 	rootCmd.PersistentFlags().StringVar(&flagBearerToken, "bearer-token", "", "Bearer token for Authorization header (falls back to A2A_BEARER_TOKEN env var)")
+	rootCmd.PersistentFlags().DurationVar(&flagTimeout, "timeout", 0, "HTTP request timeout (e.g. 30s, 5m, 1h); 0 uses library defaults")
+	rootCmd.PersistentFlags().IntVar(&flagRetry, "retry", 0, "Maximum retry count for failed requests (0 disables retry)")
 }
 
 // clientOptions builds a client.Options from the global persistent flags and
@@ -83,6 +94,8 @@ func clientOptions(baseURL string) client.Options {
 		V03RESTMount: flagV03RESTMount,
 		Headers:      flagHeaders,
 		BearerToken:  flagBearerToken,
+		Timeout:      flagTimeout,
+		MaxRetries:   flagRetry,
 	}
 }
 

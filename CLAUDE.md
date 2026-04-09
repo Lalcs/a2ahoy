@@ -32,7 +32,7 @@ go test ./internal/vertexai/...
 - `a2ahoy task cancel <agent-url> <task-id>` — Cancel a task by ID via `CancelTask`
 - `a2ahoy task list <agent-url>` — List tasks with optional filtering and pagination via `ListTasks`
 
-Global flags: `--gcp-auth` (GCP ADC ID token auth), `--vertex-ai` (Vertex AI Agent Engine mode), `--v03-rest-mount` (opt-in A2A v0.3 REST `/v1` mount-point prefix workaround for Python a2a-sdk / ADK / Vertex AI peers; applies to both standard and Vertex AI paths), `--json` (raw JSON output), `--header KEY=VALUE` (repeatable custom HTTP header), `--bearer-token` (static Bearer token, also from `A2A_BEARER_TOKEN` env var)
+Global flags: `--gcp-auth` (GCP ADC ID token auth), `--vertex-ai` (Vertex AI Agent Engine mode), `--v03-rest-mount` (opt-in A2A v0.3 REST `/v1` mount-point prefix workaround for Python a2a-sdk / ADK / Vertex AI peers; applies to both standard and Vertex AI paths), `--json` (raw JSON output), `--header KEY=VALUE` (repeatable custom HTTP header), `--bearer-token` (static Bearer token, also from `A2A_BEARER_TOKEN` env var), `--timeout` (HTTP request timeout, e.g. `30s`, `5m`; 0 uses library defaults of 3min), `--retry` (max retry count for failed non-streaming requests with exponential backoff; 0 disables retry)
 
 ## Architecture
 
@@ -48,7 +48,8 @@ internal/
 │   └── push.go              # push parent command + set/get/list/delete subcommands
 ├── client/                  # A2A client factory
 │   ├── a2a_client.go        # A2AClient interface (abstracts standard & Vertex AI)
-│   └── client.go            # Factory: resolves agent card, creates client
+│   ├── client.go            # Factory: resolves agent card, creates client
+│   └── retry.go             # Retry decorator with exponential backoff (wraps A2AClient)
 ├── auth/                    # HTTP header / authentication interceptors
 │   ├── gcp.go               # ID token interceptor (standard A2A, --gcp-auth)
 │   ├── gcp_access_token.go  # OAuth2 access token interceptor (Vertex AI)

@@ -43,6 +43,8 @@ func TestRootCommand_HasPersistentFlags(t *testing.T) {
 		{"vertex-ai"},
 		{"header"},
 		{"bearer-token"},
+		{"timeout"},
+		{"retry"},
 	}
 	for _, tt := range tests {
 		f := rootCmd.PersistentFlags().Lookup(tt.flag)

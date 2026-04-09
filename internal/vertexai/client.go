@@ -53,11 +53,20 @@ type HeaderEntry struct {
 	Value string
 }
 
+// defaultTimeout is the HTTP client timeout shared with the standard A2A
+// transports (a2a-go defaults to 3 minutes). Keeping the same value avoids
+// surprising differences between the --vertex-ai and standard code paths.
+const defaultTimeout = 3 * time.Minute
+
 // NewClient creates a Vertex AI A2A client.
 // getToken is called before each request to obtain a fresh OAuth2 access token.
-func NewClient(endpoint *Endpoint, getToken func() (string, error)) *Client {
+// If httpClient is nil, a default client with defaultTimeout is used.
+func NewClient(endpoint *Endpoint, getToken func() (string, error), httpClient *http.Client) *Client {
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: defaultTimeout}
+	}
 	return &Client{
-		httpClient: &http.Client{Timeout: 5 * time.Minute},
+		httpClient: httpClient,
 		endpoint:   endpoint,
 		getToken:   getToken,
 	}

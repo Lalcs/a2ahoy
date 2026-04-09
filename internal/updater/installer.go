@@ -22,8 +22,8 @@ type Installer struct {
 	resolveExecutable func() (string, error)
 }
 
-// NewInstaller returns an Installer with a 5-minute HTTP timeout, matching
-// the existing Vertex AI client's timeout for long-running downloads.
+// NewInstaller returns an Installer with a 5-minute HTTP timeout suitable
+// for long-running binary downloads.
 func NewInstaller() *Installer {
 	return &Installer{
 		httpClient:        &http.Client{Timeout: 5 * time.Minute},

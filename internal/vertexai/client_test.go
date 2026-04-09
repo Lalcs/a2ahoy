@@ -19,7 +19,7 @@ func newTestClient(t *testing.T, handler http.Handler) (*Client, *httptest.Serve
 	ep := &Endpoint{base: server.URL}
 	c := NewClient(ep, func() (string, error) {
 		return "test-token", nil
-	})
+	}, nil)
 	// Preset the card so tests that invoke SendMessage/GetTask/
 	// CancelTask/SendStreamingMessage directly (without going through
 	// FetchCard first) route to the test server's /a2a/v1/* routes.
@@ -609,7 +609,7 @@ func TestClient_TokenError(t *testing.T) {
 	ep := &Endpoint{base: "https://example.com"}
 	c := NewClient(ep, func() (string, error) {
 		return "", fmt.Errorf("token error")
-	})
+	}, nil)
 
 	_, err := c.FetchCard(context.Background())
 	if err == nil {
@@ -1067,7 +1067,7 @@ func TestClient_Destroy(t *testing.T) {
 	ep := &Endpoint{base: "https://example.com"}
 	c := NewClient(ep, func() (string, error) {
 		return "test-token", nil
-	})
+	}, nil)
 	if err := c.Destroy(); err != nil {
 		t.Errorf("Destroy() = %v, want nil", err)
 	}
@@ -1120,7 +1120,7 @@ func newFailingTokenClient(t *testing.T, handler http.Handler) (*Client, *httpte
 	ep := &Endpoint{base: server.URL}
 	c := NewClient(ep, func() (string, error) {
 		return "", fmt.Errorf("token unavailable")
-	})
+	}, nil)
 	c.card = &a2a.AgentCard{
 		SupportedInterfaces: []*a2a.AgentInterface{
 			{URL: server.URL + "/a2a/v1"},
@@ -1510,7 +1510,7 @@ func TestClient_NewRequest_InvalidURL(t *testing.T) {
 	ep := &Endpoint{base: "https://example.com"}
 	c := NewClient(ep, func() (string, error) {
 		return "test-token", nil
-	})
+	}, nil)
 
 	_, err := c.newRequest(context.Background(), http.MethodGet, "http://example.com/path\x00invalid", nil)
 	if err == nil {
@@ -1528,7 +1528,7 @@ func TestClient_FetchCard_ReadBodyError(t *testing.T) {
 	ep := &Endpoint{base: "https://example.com"}
 	c := NewClient(ep, func() (string, error) {
 		return "test-token", nil
-	})
+	}, nil)
 	c.httpClient = &http.Client{
 		Transport: &brokenBodyTransport{
 			statusCode: http.StatusOK,
@@ -1552,7 +1552,7 @@ func TestClient_SendStreamingMessage_ScannerError(t *testing.T) {
 	ep := &Endpoint{base: "https://example.com"}
 	c := NewClient(ep, func() (string, error) {
 		return "test-token", nil
-	})
+	}, nil)
 	c.card = &a2a.AgentCard{
 		SupportedInterfaces: []*a2a.AgentInterface{
 			{URL: "https://example.com/a2a/v1"},
