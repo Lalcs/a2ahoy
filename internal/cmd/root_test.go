@@ -43,6 +43,7 @@ func TestRootCommand_HasPersistentFlags(t *testing.T) {
 		{"vertex-ai"},
 		{"header"},
 		{"bearer-token"},
+		{"verbose"},
 		{"timeout"},
 		{"retry"},
 	}

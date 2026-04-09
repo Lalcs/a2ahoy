@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ var (
 	flagVertexAI     bool
 	flagV03RESTMount bool
 	flagNoColor      bool
+	flagVerbose      bool
 	flagHeaders      []string
 	flagBearerToken  string
 	flagTimeout      time.Duration
@@ -75,6 +77,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagVertexAI, "vertex-ai", false, "Treat the URL as a Vertex AI Agent Engine endpoint")
 	rootCmd.PersistentFlags().BoolVar(&flagV03RESTMount, "v03-rest-mount", false, "Apply A2A v0.3 REST /v1 mount-point prefix workaround (for Python a2a-sdk / ADK / Vertex AI servers)")
 	rootCmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable colored output")
+	rootCmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "Dump HTTP request/response traces to stderr")
 	// StringArrayVar (not StringSliceVar) so values with commas are not split,
 	// e.g. --header "Accept=application/json, text/plain".
 	rootCmd.PersistentFlags().StringArrayVar(&flagHeaders, "header", nil, "Add a custom HTTP header in KEY=VALUE form (repeatable)")
@@ -87,15 +90,21 @@ func init() {
 // the given base URL. All commands that call client.New share this builder so
 // new flags are wired in exactly one place.
 func clientOptions(baseURL string) client.Options {
+	var verboseOutput io.Writer
+	if flagVerbose {
+		verboseOutput = os.Stderr
+	}
 	return client.Options{
-		BaseURL:      baseURL,
-		GCPAuth:      flagGCPAuth,
-		VertexAI:     flagVertexAI,
-		V03RESTMount: flagV03RESTMount,
-		Headers:      flagHeaders,
-		BearerToken:  flagBearerToken,
-		Timeout:      flagTimeout,
-		MaxRetries:   flagRetry,
+		BaseURL:       baseURL,
+		GCPAuth:       flagGCPAuth,
+		VertexAI:      flagVertexAI,
+		V03RESTMount:  flagV03RESTMount,
+		Verbose:       flagVerbose,
+		VerboseOutput: verboseOutput,
+		Headers:       flagHeaders,
+		BearerToken:   flagBearerToken,
+		Timeout:       flagTimeout,
+		MaxRetries:    flagRetry,
 	}
 }
 

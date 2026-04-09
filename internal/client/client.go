@@ -3,11 +3,13 @@ package client
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Lalcs/a2ahoy/internal/auth"
+	"github.com/Lalcs/a2ahoy/internal/httptrace"
 	"github.com/Lalcs/a2ahoy/internal/vertexai"
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2aclient"
@@ -46,6 +48,13 @@ type Options struct {
 	// Timeout overrides the HTTP client timeout for all transports.
 	// Zero means use library defaults (30s card resolution, 3min for both standard and Vertex AI).
 	Timeout time.Duration
+	// Verbose, when true, dumps every HTTP request and response to
+	// VerboseOutput via httputil.DumpRequestOut / DumpResponse.
+	Verbose bool
+	// VerboseOutput is the writer for HTTP trace output when Verbose is
+	// true. Callers must set this to a non-nil value when Verbose is true
+	// (typically os.Stderr).
+	VerboseOutput io.Writer
 	// MaxRetries is the maximum number of retries for failed non-streaming requests.
 	// Zero means no retry.
 	MaxRetries int
@@ -58,6 +67,17 @@ func httpClientFromTimeout(d time.Duration) *http.Client {
 		return nil
 	}
 	return &http.Client{Timeout: d}
+}
+
+// buildHTTPClient creates an *http.Client from opts, applying the verbose
+// transport wrapper when requested. Returns nil when no custom timeout is
+// set and verbose is off (signaling "use library default").
+func buildHTTPClient(opts Options) *http.Client {
+	hc := httpClientFromTimeout(opts.Timeout)
+	if opts.Verbose {
+		hc = httptrace.WrapClient(hc, opts.VerboseOutput)
+	}
+	return hc
 }
 
 // New creates an A2A client and resolves the agent card.
@@ -121,7 +141,7 @@ func resolveVertexAICard(ctx context.Context, opts Options) (*vertexai.Client, *
 		return nil, nil, fmt.Errorf("GCP access token auth setup failed: %w", err)
 	}
 
-	vc := vertexai.NewClient(endpoint, interceptor.GetToken, httpClientFromTimeout(opts.Timeout))
+	vc := vertexai.NewClient(endpoint, interceptor.GetToken, buildHTTPClient(opts))
 
 	if err := applyVertexAIHeaders(vc, opts.Headers); err != nil {
 		return nil, nil, err
@@ -324,10 +344,11 @@ func resolveStandardCard(ctx context.Context, opts Options) (*a2a.AgentCard, []a
 		clientOpts = append(clientOpts, a2aclient.WithCallInterceptors(auth.NewHeaderInterceptor(headerEntries)))
 	}
 
-	// When a custom timeout is specified, override the default v1.0
-	// transports with ones using the custom HTTP client. When hc is nil
-	// (timeout=0), the library's auto-registered defaults (3min) are used.
-	hc := httpClientFromTimeout(opts.Timeout)
+	// When a custom timeout or verbose mode is specified, override the
+	// default transports with ones using the custom HTTP client. When hc
+	// is nil (timeout=0, verbose=off), the library's auto-registered
+	// defaults (3min) are used.
+	hc := buildHTTPClient(opts)
 	if hc != nil {
 		clientOpts = append(clientOpts,
 			a2aclient.WithJSONRPCTransport(hc),
