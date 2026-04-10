@@ -12,18 +12,22 @@ import (
 
 // sendRequest is the top-level request body for Vertex AI message:send.
 type sendRequest struct {
-	Message       wireMessage `json:"message"`
-	Configuration *wireConfig `json:"configuration,omitempty"`
+	Tenant        string         `json:"tenant,omitempty"`
+	Message       wireMessage    `json:"message"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
+	Configuration *wireConfig    `json:"configuration,omitempty"`
 }
 
 // wireMessage is the Vertex AI wire format for a message.
 // Key difference from standard A2A: uses "content" instead of "parts".
 type wireMessage struct {
-	MessageID string      `json:"messageId"`
-	Role      string      `json:"role"` // "ROLE_USER" or "ROLE_AGENT"
-	Content   []*a2a.Part `json:"content"`
-	ContextID string      `json:"contextId,omitempty"`
-	TaskID    string      `json:"taskId,omitempty"`
+	MessageID  string         `json:"messageId"`
+	Role       string         `json:"role"` // "ROLE_USER" or "ROLE_AGENT"
+	Content    []*a2a.Part    `json:"content"`
+	ContextID  string         `json:"contextId,omitempty"`
+	Extensions []string       `json:"extensions,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
+	TaskID     string         `json:"taskId,omitempty"`
 }
 
 // wireConfig holds the Vertex AI send configuration.
@@ -70,11 +74,13 @@ type wireArtifact struct {
 // Shared by buildSendRequest and buildStreamRequest.
 func newWireMessage(msg *a2a.Message) wireMessage {
 	wm := wireMessage{
-		MessageID: msg.ID,
-		Role:      string(msg.Role),
-		Content:   []*a2a.Part(msg.Parts),
-		ContextID: msg.ContextID,
-		TaskID:    string(msg.TaskID),
+		MessageID:  msg.ID,
+		Role:       string(msg.Role),
+		Content:    []*a2a.Part(msg.Parts),
+		ContextID:  msg.ContextID,
+		Extensions: msg.Extensions,
+		Metadata:   msg.Metadata,
+		TaskID:     string(msg.TaskID),
 	}
 
 	// Assign a message ID if not set.
@@ -104,7 +110,9 @@ func buildSendRequest(req *a2a.SendMessageRequest) sendRequest {
 		cfg.AcceptedOutputModes = req.Config.AcceptedOutputModes
 	}
 	return sendRequest{
+		Tenant:        req.Tenant,
 		Message:       newWireMessage(req.Message),
+		Metadata:      req.Metadata,
 		Configuration: cfg,
 	}
 }
@@ -115,10 +123,13 @@ func buildSendRequest(req *a2a.SendMessageRequest) sendRequest {
 // are specified.
 func buildStreamRequest(req *a2a.SendMessageRequest) sendRequest {
 	sr := sendRequest{
-		Message: newWireMessage(req.Message),
+		Tenant:   req.Tenant,
+		Message:  newWireMessage(req.Message),
+		Metadata: req.Metadata,
 	}
 	if hasOutputModes(req) {
 		sr.Configuration = &wireConfig{
+			Blocking:            false,
 			AcceptedOutputModes: req.Config.AcceptedOutputModes,
 		}
 	}
@@ -162,11 +173,13 @@ func toA2ATask(wt wireTask) *a2a.Task {
 // wireMessageToA2A converts a wireMessage to an a2a.Message.
 func wireMessageToA2A(wm *wireMessage) *a2a.Message {
 	return &a2a.Message{
-		ID:        wm.MessageID,
-		Role:      a2a.MessageRole(wm.Role),
-		Parts:     a2a.ContentParts(wm.Content),
-		ContextID: wm.ContextID,
-		TaskID:    a2a.TaskID(wm.TaskID),
+		ID:         wm.MessageID,
+		Role:       a2a.MessageRole(wm.Role),
+		Parts:      a2a.ContentParts(wm.Content),
+		ContextID:  wm.ContextID,
+		Extensions: wm.Extensions,
+		Metadata:   wm.Metadata,
+		TaskID:     a2a.TaskID(wm.TaskID),
 	}
 }
 

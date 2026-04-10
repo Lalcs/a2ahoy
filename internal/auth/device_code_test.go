@@ -462,6 +462,25 @@ func TestNewDeviceCodeInterceptor_MissingConfig(t *testing.T) {
 	}
 }
 
+func TestNewDeviceCodeInterceptor_NilPromptOutput(t *testing.T) {
+	withInstantPoll(t)
+	ts := newDeviceCodeServer(t, 0, 0, "")
+
+	_, err := NewDeviceCodeInterceptor(
+		t.Context(),
+		DeviceCodeConfig{
+			ClientID:               "test-client",
+			DeviceAuthorizationURL: ts.URL + "/device/code",
+			TokenURL:               ts.URL + "/token",
+		},
+		nil,
+		ts.Client(),
+	)
+	if !errors.Is(err, ErrMissingPromptOutput) {
+		t.Fatalf("expected ErrMissingPromptOutput, got: %v", err)
+	}
+}
+
 func TestNewDeviceCodeInterceptor_Before_PreservesContext(t *testing.T) {
 	type ctxKey struct{}
 	ctx := context.WithValue(t.Context(), ctxKey{}, "preserved")

@@ -249,6 +249,64 @@ func TestBuildSendRequest_WithAcceptedOutputModes(t *testing.T) {
 	}
 }
 
+func TestBuildSendRequest_WithAdditionalFields(t *testing.T) {
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "msg-001"
+	msg.Extensions = []string{"urn:ext:test"}
+	msg.Metadata = map[string]any{"msg": "meta"}
+	msg.ReferenceTasks = []a2a.TaskID{"task-123"}
+
+	historyLength := 7
+	req := buildSendRequest(&a2a.SendMessageRequest{
+		Tenant:   "tenant-1",
+		Message:  msg,
+		Metadata: map[string]any{"req": "meta"},
+		Config: &a2a.SendMessageConfig{
+			HistoryLength: &historyLength,
+			PushConfig: &a2a.PushConfig{
+				URL:   "https://example.com/push",
+				Token: "push-token",
+			},
+		},
+	})
+
+	if req.Tenant != "tenant-1" {
+		t.Errorf("tenant: got %q, want %q", req.Tenant, "tenant-1")
+	}
+	if got := req.Metadata["req"]; got != "meta" {
+		t.Errorf("metadata[req]: got %v, want %q", got, "meta")
+	}
+	if len(req.Message.Extensions) != 1 || req.Message.Extensions[0] != "urn:ext:test" {
+		t.Errorf("message.extensions: got %v, want [urn:ext:test]", req.Message.Extensions)
+	}
+	if got := req.Message.Metadata["msg"]; got != "meta" {
+		t.Errorf("message.metadata[msg]: got %v, want %q", got, "meta")
+	}
+	if req.Configuration == nil {
+		t.Fatal("Configuration should not be nil")
+	}
+
+	b, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal error: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(b, &raw); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	msgRaw := raw["message"].(map[string]any)
+	if _, ok := msgRaw["referenceTaskIds"]; ok {
+		t.Fatal("referenceTaskIds should be omitted from Vertex AI wire message")
+	}
+	cfgRaw := raw["configuration"].(map[string]any)
+	if _, ok := cfgRaw["historyLength"]; ok {
+		t.Fatal("historyLength should be omitted from Vertex AI configuration")
+	}
+	if _, ok := cfgRaw["pushNotificationConfig"]; ok {
+		t.Fatal("pushNotificationConfig should be omitted from Vertex AI configuration")
+	}
+}
+
 func TestBuildSendRequest_NilConfig(t *testing.T) {
 	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
 	msg.ID = "msg-001"
@@ -330,6 +388,39 @@ func TestBuildStreamRequest_WithAcceptedOutputModes(t *testing.T) {
 	}
 	if req.Configuration.AcceptedOutputModes[0] != "text/plain" {
 		t.Errorf("AcceptedOutputModes[0]: got %q, want %q", req.Configuration.AcceptedOutputModes[0], "text/plain")
+	}
+}
+
+func TestBuildStreamRequest_WithAdditionalFields(t *testing.T) {
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "msg-001"
+	msg.Extensions = []string{"urn:ext:stream"}
+	msg.Metadata = map[string]any{"msg": "meta"}
+
+	historyLength := 3
+	req := buildStreamRequest(&a2a.SendMessageRequest{
+		Tenant:   "tenant-2",
+		Message:  msg,
+		Metadata: map[string]any{"req": "meta"},
+		Config: &a2a.SendMessageConfig{
+			HistoryLength: &historyLength,
+			PushConfig: &a2a.PushConfig{
+				URL: "https://example.com/push",
+			},
+		},
+	})
+
+	if req.Tenant != "tenant-2" {
+		t.Errorf("tenant: got %q, want %q", req.Tenant, "tenant-2")
+	}
+	if got := req.Metadata["req"]; got != "meta" {
+		t.Errorf("metadata[req]: got %v, want %q", got, "meta")
+	}
+	if len(req.Message.Extensions) != 1 || req.Message.Extensions[0] != "urn:ext:stream" {
+		t.Errorf("message.extensions: got %v, want [urn:ext:stream]", req.Message.Extensions)
+	}
+	if req.Configuration != nil {
+		t.Fatalf("Configuration should be omitted when only unsupported stream config fields are set, got %+v", req.Configuration)
 	}
 }
 

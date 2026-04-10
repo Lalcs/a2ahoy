@@ -436,15 +436,46 @@ func TestClient_SendMessage(t *testing.T) {
 		}
 
 		// Verify request body format.
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
 		var req sendRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.Unmarshal(body, &req); err != nil {
 			t.Fatalf("failed to decode request: %v", err)
+		}
+		var raw map[string]any
+		if err := json.Unmarshal(body, &raw); err != nil {
+			t.Fatalf("failed to decode raw request: %v", err)
 		}
 		if req.Message.Role != "ROLE_USER" {
 			t.Errorf("role: got %q, want ROLE_USER", req.Message.Role)
 		}
 		if req.Configuration == nil || !req.Configuration.Blocking {
 			t.Error("expected blocking: true")
+		}
+		if req.Tenant != "tenant-1" {
+			t.Errorf("tenant: got %q, want %q", req.Tenant, "tenant-1")
+		}
+		if got := req.Metadata["request"]; got != "metadata" {
+			t.Errorf("metadata[request]: got %v, want %q", got, "metadata")
+		}
+		if len(req.Message.Extensions) != 1 || req.Message.Extensions[0] != "urn:test:ext" {
+			t.Errorf("message.extensions: got %v, want [urn:test:ext]", req.Message.Extensions)
+		}
+		if got := req.Message.Metadata["message"]; got != "metadata" {
+			t.Errorf("message.metadata[message]: got %v, want %q", got, "metadata")
+		}
+		msgRaw := raw["message"].(map[string]any)
+		if _, ok := msgRaw["referenceTaskIds"]; ok {
+			t.Error("referenceTaskIds should be omitted from Vertex AI wire message")
+		}
+		cfgRaw := raw["configuration"].(map[string]any)
+		if _, ok := cfgRaw["historyLength"]; ok {
+			t.Error("historyLength should be omitted from Vertex AI configuration")
+		}
+		if _, ok := cfgRaw["pushNotificationConfig"]; ok {
+			t.Error("pushNotificationConfig should be omitted from Vertex AI configuration")
 		}
 
 		// Return a Vertex AI response.
@@ -485,7 +516,22 @@ func TestClient_SendMessage(t *testing.T) {
 
 	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
 	msg.ID = "msg-001"
-	result, err := c.SendMessage(context.Background(), &a2a.SendMessageRequest{Message: msg})
+	msg.Extensions = []string{"urn:test:ext"}
+	msg.Metadata = map[string]any{"message": "metadata"}
+	msg.ReferenceTasks = []a2a.TaskID{"task-123"}
+	historyLength := 5
+	result, err := c.SendMessage(context.Background(), &a2a.SendMessageRequest{
+		Tenant:   "tenant-1",
+		Message:  msg,
+		Metadata: map[string]any{"request": "metadata"},
+		Config: &a2a.SendMessageConfig{
+			HistoryLength: &historyLength,
+			PushConfig: &a2a.PushConfig{
+				URL:   "https://example.com/push",
+				Token: "push-token",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1635,10 +1681,19 @@ func (r *brokenReader) Close() error { return nil }
 
 func TestClient_SendStreamingMessage_StreamRequestBody(t *testing.T) {
 	var captured sendRequest
+	var raw map[string]any
 	mux := http.NewServeMux()
 	mux.HandleFunc("/a2a/v1/message:stream", func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+			return
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
 			t.Errorf("decode request body: %v", err)
+		}
+		if err := json.Unmarshal(body, &raw); err != nil {
+			t.Errorf("decode raw request body: %v", err)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
@@ -1648,10 +1703,47 @@ func TestClient_SendStreamingMessage_StreamRequestBody(t *testing.T) {
 	c, server := newTestClient(t, mux)
 	defer server.Close()
 
-	_, _ = collectStream(t, c)
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("stream test"))
+	msg.ID = "msg-stream"
+	msg.Extensions = []string{"urn:test:stream"}
+	msg.Metadata = map[string]any{"message": "metadata"}
+	msg.ReferenceTasks = []a2a.TaskID{"task-123"}
+	historyLength := 2
 
+	for _, err := range c.SendStreamingMessage(context.Background(), &a2a.SendMessageRequest{
+		Tenant:   "tenant-stream",
+		Message:  msg,
+		Metadata: map[string]any{"request": "metadata"},
+		Config: &a2a.SendMessageConfig{
+			HistoryLength: &historyLength,
+			PushConfig: &a2a.PushConfig{
+				URL: "https://example.com/push",
+			},
+		},
+	}) {
+		if err != nil {
+			t.Fatalf("unexpected stream error: %v", err)
+		}
+	}
+
+	if captured.Tenant != "tenant-stream" {
+		t.Errorf("tenant: got %q, want %q", captured.Tenant, "tenant-stream")
+	}
+	if got := captured.Metadata["request"]; got != "metadata" {
+		t.Errorf("metadata[request]: got %v, want %q", got, "metadata")
+	}
+	if len(captured.Message.Extensions) != 1 || captured.Message.Extensions[0] != "urn:test:stream" {
+		t.Errorf("message.extensions: got %v, want [urn:test:stream]", captured.Message.Extensions)
+	}
+	if got := captured.Message.Metadata["message"]; got != "metadata" {
+		t.Errorf("message.metadata[message]: got %v, want %q", got, "metadata")
+	}
 	if captured.Configuration != nil {
-		t.Errorf("stream request Configuration: got %+v, want nil (stream should not send blocking: true)", captured.Configuration)
+		t.Fatalf("stream request Configuration should be omitted, got %+v", captured.Configuration)
+	}
+	msgRaw := raw["message"].(map[string]any)
+	if _, ok := msgRaw["referenceTaskIds"]; ok {
+		t.Error("referenceTaskIds should be omitted from Vertex AI wire message")
 	}
 	if captured.Message.MessageID == "" {
 		t.Error("stream request Message.MessageID: got empty, want auto-generated UUID")

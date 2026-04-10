@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -361,6 +362,11 @@ func resolveStandardCard(ctx context.Context, opts Options) (*a2a.AgentCard, []a
 		if err != nil {
 			return nil, nil, err
 		}
+		token, err := interceptor.GetToken()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to obtain device auth token: %w", err)
+		}
+		resolveOpts = appendBearerResolveOpts(resolveOpts, token)
 		// The card is already resolved; skip the resolver below.
 		deviceAuthCard = preCard
 		clientOpts = append(clientOpts, a2aclient.WithCallInterceptors(interceptor))
@@ -465,6 +471,8 @@ func runDeviceCodeAuth(ctx context.Context, opts Options, hc *http.Client) (*aut
 			cfg.DeviceAuthorizationURL = cardCfg.DeviceAuthorizationURL
 			cfg.TokenURL = cardCfg.TokenURL
 			cfg.Scopes = cardCfg.Scopes
+		} else if opts.DeviceAuthURL == "" || opts.DeviceAuthTokenURL == "" {
+			return nil, nil, fmt.Errorf("failed to auto-detect device auth flow from agent card: %w", findErr)
 		}
 	}
 
@@ -494,6 +502,8 @@ func findDeviceCodeFlow(card *a2a.AgentCard) (*auth.DeviceCodeConfig, error) {
 	if card == nil || card.SecuritySchemes == nil {
 		return nil, fmt.Errorf("agent card has no security schemes")
 	}
+	seen := make(map[string]struct{})
+	var matches []*auth.DeviceCodeConfig
 	for _, scheme := range card.SecuritySchemes {
 		oauth2Scheme, ok := scheme.(a2a.OAuth2SecurityScheme)
 		if !ok {
@@ -507,13 +517,27 @@ func findDeviceCodeFlow(card *a2a.AgentCard) (*auth.DeviceCodeConfig, error) {
 		for scope := range dcFlow.Scopes {
 			scopes = append(scopes, scope)
 		}
-		return &auth.DeviceCodeConfig{
+		sort.Strings(scopes)
+		cfg := &auth.DeviceCodeConfig{
 			DeviceAuthorizationURL: dcFlow.DeviceAuthorizationURL,
 			TokenURL:               dcFlow.TokenURL,
 			Scopes:                 scopes,
-		}, nil
+		}
+		key := cfg.DeviceAuthorizationURL + "\x00" + cfg.TokenURL + "\x00" + strings.Join(cfg.Scopes, "\x00")
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		matches = append(matches, cfg)
 	}
-	return nil, fmt.Errorf("no device code OAuth2 flow found in agent card security schemes")
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("no device code OAuth2 flow found in agent card security schemes")
+	case 1:
+		return matches[0], nil
+	default:
+		return nil, fmt.Errorf("multiple device code OAuth2 flows found in agent card security schemes; provide --device-auth-url and --device-token-url to select one explicitly")
+	}
 }
 
 // resolveCardWithoutAuth fetches the agent card without any auth headers.

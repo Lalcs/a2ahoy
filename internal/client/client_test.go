@@ -1260,23 +1260,31 @@ func TestNew_DeviceAuth_NoFlowInCard(t *testing.T) {
 	ts := newCardServer(t, v1CardJSON)
 	defer ts.Close()
 
-	withMockDeviceCode(t, "fake-token")
+	orig := newDeviceCodeInterceptorFn
+	t.Cleanup(func() { newDeviceCodeInterceptorFn = orig })
+
+	called := false
+	newDeviceCodeInterceptorFn = func(ctx context.Context, cfg auth.DeviceCodeConfig, promptOut io.Writer, httpClient *http.Client) (*auth.DeviceCodeInterceptor, error) {
+		called = true
+		return auth.NewDeviceCodeInterceptorFromToken("fake-token"), nil
+	}
 
 	ctx := context.Background()
-	// Card has no DeviceCodeOAuthFlow, and no explicit URLs provided.
-	// The mock interceptor receives empty URLs in cfg → the interceptor
-	// factory would normally fail on validation, but we mock it.
-	// The test verifies that the flow still works (the mock ignores cfg).
-	a2aClient, _, err := New(ctx, Options{
+	_, _, err := New(ctx, Options{
 		BaseURL:            ts.URL,
 		DeviceAuth:         true,
 		DeviceAuthClientID: "test-client",
 		PromptOutput:       io.Discard,
 	})
-	if err != nil {
+	if err == nil {
+		t.Fatal("expected error when no DeviceCodeOAuthFlow exists")
+	}
+	if !strings.Contains(err.Error(), "no device code OAuth2 flow found") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer func() { _ = a2aClient.Destroy() }()
+	if called {
+		t.Fatal("device code interceptor should not be called when no DeviceCodeOAuthFlow exists")
+	}
 }
 
 func TestNew_DeviceAuth_OverrideURLs(t *testing.T) {
@@ -1358,6 +1366,117 @@ func TestNew_DeviceAuth_CardAutoDetectsURLs(t *testing.T) {
 	}
 }
 
+func TestNew_DeviceAuth_AmbiguousFlowError(t *testing.T) {
+	orig := newDeviceCodeInterceptorFn
+	t.Cleanup(func() { newDeviceCodeInterceptorFn = orig })
+
+	called := false
+	newDeviceCodeInterceptorFn = func(ctx context.Context, cfg auth.DeviceCodeConfig, promptOut io.Writer, httpClient *http.Client) (*auth.DeviceCodeInterceptor, error) {
+		called = true
+		return auth.NewDeviceCodeInterceptorFromToken("tok"), nil
+	}
+
+	ts := newCardServer(t, func(url string) string {
+		return fmt.Sprintf(`{
+			"name": "Test Device Auth Agent",
+			"description": "A v1 test agent with multiple device code auth flows",
+			"version": "1.0",
+			"capabilities": {},
+			"defaultInputModes": ["text/plain"],
+			"defaultOutputModes": ["text/plain"],
+			"supportedInterfaces": [{
+				"url": %q,
+				"protocolBinding": "JSONRPC",
+				"protocolVersion": "1.0"
+			}],
+			"securitySchemes": {
+				"oauthA": {
+					"oauth2SecurityScheme": {
+						"flows": {
+							"deviceCode": {
+								"deviceAuthorizationUrl": "https://auth-a.example.com/device",
+								"tokenUrl": "https://auth-a.example.com/token"
+							}
+						}
+					}
+				},
+				"oauthB": {
+					"oauth2SecurityScheme": {
+						"flows": {
+							"deviceCode": {
+								"deviceAuthorizationUrl": "https://auth-b.example.com/device",
+								"tokenUrl": "https://auth-b.example.com/token"
+							}
+						}
+					}
+				}
+			},
+			"skills": []
+		}`, url)
+	})
+	defer ts.Close()
+
+	_, _, err := New(context.Background(), Options{
+		BaseURL:            ts.URL,
+		DeviceAuth:         true,
+		DeviceAuthClientID: "my-client",
+		PromptOutput:       io.Discard,
+	})
+	if err == nil {
+		t.Fatal("expected error for ambiguous DeviceCode flows")
+	}
+	if !strings.Contains(err.Error(), "multiple device code OAuth2 flows") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if called {
+		t.Fatal("device code interceptor should not be called when flow auto-detection is ambiguous")
+	}
+}
+
+func TestNew_DeviceAuth_ResolveCardWithDeviceToken(t *testing.T) {
+	var tokenCalls int
+	orig := newDeviceCodeInterceptorFn
+	t.Cleanup(func() { newDeviceCodeInterceptorFn = orig })
+	newDeviceCodeInterceptorFn = func(ctx context.Context, cfg auth.DeviceCodeConfig, promptOut io.Writer, httpClient *http.Client) (*auth.DeviceCodeInterceptor, error) {
+		tokenCalls++
+		return auth.NewDeviceCodeInterceptorFromToken("device-token"), nil
+	}
+
+	var ts *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer device-token" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, v1CardJSON(ts.URL))
+	})
+	ts = httptest.NewServer(mux)
+	defer ts.Close()
+
+	ctx := context.Background()
+	a2aClient, card, err := New(ctx, Options{
+		BaseURL:            ts.URL,
+		DeviceAuth:         true,
+		DeviceAuthClientID: "override-client",
+		DeviceAuthURL:      "https://override.example.com/device",
+		DeviceAuthTokenURL: "https://override.example.com/token",
+		PromptOutput:       io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = a2aClient.Destroy() }()
+
+	if tokenCalls != 1 {
+		t.Fatalf("device code interceptor calls: got %d, want 1", tokenCalls)
+	}
+	if card == nil || card.Name != "Test v1 Agent" {
+		t.Fatalf("resolved card: got %+v", card)
+	}
+}
+
 func TestFindDeviceCodeFlow_Success(t *testing.T) {
 	card := &a2a.AgentCard{
 		SecuritySchemes: a2a.NamedSecuritySchemes{
@@ -1381,8 +1500,70 @@ func TestFindDeviceCodeFlow_Success(t *testing.T) {
 	if cfg.TokenURL != "https://auth.example.com/token" {
 		t.Errorf("TokenURL: got %q, want %q", cfg.TokenURL, "https://auth.example.com/token")
 	}
-	if len(cfg.Scopes) != 2 {
-		t.Errorf("Scopes: got %d, want 2", len(cfg.Scopes))
+	if got, want := strings.Join(cfg.Scopes, ","), "read,write"; got != want {
+		t.Errorf("Scopes: got %q, want %q", got, want)
+	}
+}
+
+func TestFindDeviceCodeFlow_MultipleMatches(t *testing.T) {
+	card := &a2a.AgentCard{
+		SecuritySchemes: a2a.NamedSecuritySchemes{
+			"oauth-a": a2a.OAuth2SecurityScheme{
+				Flows: a2a.DeviceCodeOAuthFlow{
+					DeviceAuthorizationURL: "https://auth-a.example.com/device",
+					TokenURL:               "https://auth-a.example.com/token",
+				},
+			},
+			"oauth-b": a2a.OAuth2SecurityScheme{
+				Flows: a2a.DeviceCodeOAuthFlow{
+					DeviceAuthorizationURL: "https://auth-b.example.com/device",
+					TokenURL:               "https://auth-b.example.com/token",
+				},
+			},
+		},
+	}
+
+	_, err := findDeviceCodeFlow(card)
+	if err == nil {
+		t.Fatal("expected error when multiple DeviceCode flows exist")
+	}
+	if !strings.Contains(err.Error(), "multiple device code OAuth2 flows") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestFindDeviceCodeFlow_DeduplicatesEquivalentMatches(t *testing.T) {
+	card := &a2a.AgentCard{
+		SecuritySchemes: a2a.NamedSecuritySchemes{
+			"oauth-a": a2a.OAuth2SecurityScheme{
+				Flows: a2a.DeviceCodeOAuthFlow{
+					DeviceAuthorizationURL: "https://auth.example.com/device",
+					TokenURL:               "https://auth.example.com/token",
+					Scopes:                 map[string]string{"write": "Write", "read": "Read"},
+				},
+			},
+			"oauth-b": a2a.OAuth2SecurityScheme{
+				Flows: a2a.DeviceCodeOAuthFlow{
+					DeviceAuthorizationURL: "https://auth.example.com/device",
+					TokenURL:               "https://auth.example.com/token",
+					Scopes:                 map[string]string{"read": "Read", "write": "Write"},
+				},
+			},
+		},
+	}
+
+	cfg, err := findDeviceCodeFlow(card)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.DeviceAuthorizationURL != "https://auth.example.com/device" {
+		t.Errorf("DeviceAuthorizationURL: got %q, want %q", cfg.DeviceAuthorizationURL, "https://auth.example.com/device")
+	}
+	if cfg.TokenURL != "https://auth.example.com/token" {
+		t.Errorf("TokenURL: got %q, want %q", cfg.TokenURL, "https://auth.example.com/token")
+	}
+	if got, want := strings.Join(cfg.Scopes, ","), "read,write"; got != want {
+		t.Errorf("Scopes: got %q, want %q", got, want)
 	}
 }
 

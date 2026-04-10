@@ -33,6 +33,9 @@ var (
 
 	// ErrMissingTokenURL is returned when no token endpoint URL is provided.
 	ErrMissingTokenURL = errors.New("token URL is required for device code auth")
+
+	// ErrMissingPromptOutput is returned when no prompt writer is provided.
+	ErrMissingPromptOutput = errors.New("prompt output is required for device code auth")
 )
 
 // defaultPollInterval is the default polling interval in seconds when the
@@ -136,6 +139,9 @@ type DeviceCodeInterceptor struct {
 func NewDeviceCodeInterceptor(ctx context.Context, cfg DeviceCodeConfig, promptOut io.Writer, httpClient *http.Client) (*DeviceCodeInterceptor, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
+	}
+	if promptOut == nil {
+		return nil, ErrMissingPromptOutput
 	}
 	if httpClient == nil {
 		httpClient = http.DefaultClient
