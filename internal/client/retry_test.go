@@ -285,6 +285,7 @@ type mockA2AClient struct {
 	getTaskPushConfigCalls    int
 	listTaskPushConfigsCalls  int
 	deleteTaskPushConfigCalls int
+	getExtendedAgentCardCalls int
 	destroyCalls              int
 }
 
@@ -330,6 +331,10 @@ func (m *mockA2AClient) ListTaskPushConfigs(_ context.Context, _ *a2a.ListTaskPu
 func (m *mockA2AClient) DeleteTaskPushConfig(_ context.Context, _ *a2a.DeleteTaskPushConfigRequest) error {
 	m.deleteTaskPushConfigCalls++
 	return nil
+}
+func (m *mockA2AClient) GetExtendedAgentCard(_ context.Context, _ *a2a.GetExtendedAgentCardRequest) (*a2a.AgentCard, error) {
+	m.getExtendedAgentCardCalls++
+	return nil, nil
 }
 func (m *mockA2AClient) Destroy() error {
 	m.destroyCalls++
@@ -395,6 +400,13 @@ func TestRetryClient_DelegationMethods(t *testing.T) {
 	}
 	if mock.deleteTaskPushConfigCalls != 1 {
 		t.Errorf("deleteTaskPushConfigCalls = %d, want 1", mock.deleteTaskPushConfigCalls)
+	}
+
+	if _, err := rc.GetExtendedAgentCard(ctx, &a2a.GetExtendedAgentCardRequest{}); err != nil {
+		t.Fatalf("GetExtendedAgentCard: %v", err)
+	}
+	if mock.getExtendedAgentCardCalls != 1 {
+		t.Errorf("getExtendedAgentCardCalls = %d, want 1", mock.getExtendedAgentCardCalls)
 	}
 
 	if err := rc.Destroy(); err != nil {

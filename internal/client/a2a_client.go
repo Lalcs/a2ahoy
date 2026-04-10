@@ -44,6 +44,10 @@ type A2AClient interface {
 	// DeleteTaskPushConfig deletes a push notification configuration.
 	DeleteTaskPushConfig(ctx context.Context, req *a2a.DeleteTaskPushConfigRequest) error
 
+	// GetExtendedAgentCard retrieves the authenticated extended agent card.
+	// Requires that the agent declares capabilities.extendedAgentCard: true.
+	GetExtendedAgentCard(ctx context.Context, req *a2a.GetExtendedAgentCardRequest) (*a2a.AgentCard, error)
+
 	// Destroy releases any resources held by the client.
 	Destroy() error
 }

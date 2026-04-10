@@ -139,6 +139,12 @@ func (r *retryClient) ListTaskPushConfigs(ctx context.Context, req *a2a.ListTask
 	})
 }
 
+func (r *retryClient) GetExtendedAgentCard(ctx context.Context, req *a2a.GetExtendedAgentCardRequest) (*a2a.AgentCard, error) {
+	return retry(ctx, r.maxRetries, func() (*a2a.AgentCard, error) {
+		return r.inner.GetExtendedAgentCard(ctx, req)
+	})
+}
+
 func (r *retryClient) DeleteTaskPushConfig(ctx context.Context, req *a2a.DeleteTaskPushConfigRequest) error {
 	_, err := retry(ctx, r.maxRetries, func() (struct{}, error) {
 		return struct{}{}, r.inner.DeleteTaskPushConfig(ctx, req)

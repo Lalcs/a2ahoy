@@ -1710,6 +1710,19 @@ func TestClient_PushConfig_NotSupported(t *testing.T) {
 	}
 }
 
+func TestClient_GetExtendedAgentCard_NotSupported(t *testing.T) {
+	c, server := newTestClient(t, http.NewServeMux())
+	defer server.Close()
+
+	_, err := c.GetExtendedAgentCard(context.Background(), &a2a.GetExtendedAgentCardRequest{})
+	if err == nil {
+		t.Fatal("expected error for GetExtendedAgentCard on Vertex AI")
+	}
+	if !errors.Is(err, ErrExtendedCardNotSupported) {
+		t.Errorf("expected ErrExtendedCardNotSupported, got: %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // readErrorResponse
 // ---------------------------------------------------------------------------

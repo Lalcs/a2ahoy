@@ -28,6 +28,7 @@ func resetGlobalFlags(t *testing.T) {
 	flagJSON = false
 	flagVertexAI = false
 	flagV03RESTMount = false
+	flagExtended = false
 	flagNoColor = false
 	flagHeaders = nil
 	flagBearerToken = ""
@@ -65,6 +66,25 @@ func v1CardJSON(serverURL string) string {
 		"description": "A test agent",
 		"version": "1.0",
 		"capabilities": {},
+		"defaultInputModes": ["text/plain"],
+		"defaultOutputModes": ["text/plain"],
+		"supportedInterfaces": [{
+			"url": %q,
+			"protocolBinding": "JSONRPC",
+			"protocolVersion": "1.0"
+		}],
+		"skills": [{"id":"echo","name":"Echo","description":"Echoes the input"}]
+	}`, serverURL)
+}
+
+// v1ExtendedCardJSON returns a minimal A2A spec v1.0 agent card JSON
+// that declares capabilities.extendedAgentCard: true.
+func v1ExtendedCardJSON(serverURL string) string {
+	return fmt.Sprintf(`{
+		"name": "Test Agent",
+		"description": "A test agent",
+		"version": "1.0",
+		"capabilities": {"extendedAgentCard": true},
 		"defaultInputModes": ["text/plain"],
 		"defaultOutputModes": ["text/plain"],
 		"supportedInterfaces": [{
@@ -114,9 +134,39 @@ func rawTaskJSON(taskID, contextID, state string) json.RawMessage {
 	}`, taskID, contextID, state))
 }
 
+// extendedCardResultJSON returns a JSON-RPC result payload for the
+// GetExtendedAgentCard method. The returned card contains extra skills
+// only visible to authenticated callers.
+func extendedCardResultJSON(serverURL string) json.RawMessage {
+	return json.RawMessage(fmt.Sprintf(`{
+		"name": "Test Agent (Extended)",
+		"description": "Extended card with extra skills",
+		"version": "1.0",
+		"capabilities": {"extendedAgentCard": true},
+		"defaultInputModes": ["text/plain"],
+		"defaultOutputModes": ["text/plain"],
+		"supportedInterfaces": [{
+			"url": %q,
+			"protocolBinding": "JSONRPC",
+			"protocolVersion": "1.0"
+		}],
+		"skills": [
+			{"id":"echo","name":"Echo","description":"Echoes the input"},
+			{"id":"secret","name":"Secret Skill","description":"Only visible with auth"}
+		]
+	}`, serverURL))
+}
+
 // a2aTestServer returns an httptest.Server that serves a valid v1 agent
 // card and handles JSON-RPC A2A protocol requests (send, stream, get, cancel).
 func a2aTestServer(t *testing.T) *httptest.Server {
+	return a2aTestServerWithCard(t, v1CardJSON)
+}
+
+// a2aTestServerWithCard returns an httptest.Server using the given card
+// JSON factory. This allows tests to control whether the card declares
+// capabilities like extendedAgentCard.
+func a2aTestServerWithCard(t *testing.T, cardJSON func(string) string) *httptest.Server {
 	t.Helper()
 	var ts *httptest.Server
 	mux := http.NewServeMux()
@@ -124,7 +174,7 @@ func a2aTestServer(t *testing.T) *httptest.Server {
 	// Card endpoint.
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, v1CardJSON(ts.URL))
+		_, _ = fmt.Fprint(w, cardJSON(ts.URL))
 	})
 
 	// JSON-RPC endpoint at the root URL (matches supportedInterfaces URL).
@@ -292,6 +342,10 @@ func a2aTestServer(t *testing.T) *httptest.Server {
 			// response wraps a null result.
 			_, _ = w.Write(jsonRPCResponse(req.ID, json.RawMessage(`null`)))
 
+		case "GetExtendedAgentCard":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(jsonRPCResponse(req.ID, extendedCardResultJSON(ts.URL)))
+
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			errResp := fmt.Sprintf(`{"jsonrpc":"2.0","id":%q,"error":{"code":-32601,"message":"method not found"}}`, req.ID)
@@ -437,6 +491,52 @@ func TestRunCard_ValidationError_JSON(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "validation failed") {
 		t.Errorf("expected validation error, got: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// runCard --extended
+// ---------------------------------------------------------------------------
+
+func TestRunCard_Extended_HumanReadable(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServerWithCard(t, v1ExtendedCardJSON)
+
+	rootCmd.SetArgs([]string{"card", "--extended", ts.URL})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runCard --extended human-readable failed: %v", err)
+	}
+}
+
+func TestRunCard_Extended_JSON(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServerWithCard(t, v1ExtendedCardJSON)
+
+	rootCmd.SetArgs([]string{"--json", "card", "--extended", ts.URL})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("runCard --extended --json failed: %v", err)
+	}
+}
+
+func TestRunCard_Extended_NoCapability(t *testing.T) {
+	resetGlobalFlags(t)
+	// Use the standard test server whose card does NOT declare extendedAgentCard.
+	// The a2a-go client short-circuits with ErrExtendedCardNotConfigured.
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{"card", "--extended", ts.URL})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when extended card capability is not declared")
 	}
 }
 

@@ -32,6 +32,10 @@ var ErrPushNotSupported = errors.New("push notification configuration is not sup
 // on a Vertex AI Agent Engine client, which does not expose this operation.
 var ErrSubscribeToTaskNotSupported = errors.New("SubscribeToTask is not supported by Vertex AI Agent Engine")
 
+// ErrExtendedCardNotSupported is returned when GetExtendedAgentCard is called
+// on a Vertex AI Agent Engine client, which does not expose this operation.
+var ErrExtendedCardNotSupported = errors.New("GetExtendedAgentCard is not supported by Vertex AI Agent Engine")
+
 // Client communicates with a Vertex AI Agent Engine A2A endpoint.
 // It translates between standard a2a.* types and the Vertex AI
 // Protobuf JSON wire format.
@@ -376,6 +380,11 @@ func (c *Client) ListTaskPushConfigs(_ context.Context, _ *a2a.ListTaskPushConfi
 // DeleteTaskPushConfig is not supported by Vertex AI Agent Engine.
 func (c *Client) DeleteTaskPushConfig(_ context.Context, _ *a2a.DeleteTaskPushConfigRequest) error {
 	return ErrPushNotSupported
+}
+
+// GetExtendedAgentCard is not supported by Vertex AI Agent Engine.
+func (c *Client) GetExtendedAgentCard(_ context.Context, _ *a2a.GetExtendedAgentCardRequest) (*a2a.AgentCard, error) {
+	return nil, ErrExtendedCardNotSupported
 }
 
 // Destroy is a no-op for the Vertex AI client (no persistent resources).

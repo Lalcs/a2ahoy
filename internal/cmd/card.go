@@ -7,8 +7,11 @@ import (
 	"github.com/Lalcs/a2ahoy/internal/cardcheck"
 	"github.com/Lalcs/a2ahoy/internal/client"
 	"github.com/Lalcs/a2ahoy/internal/presenter"
+	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/spf13/cobra"
 )
+
+var flagExtended bool
 
 var cardCmd = &cobra.Command{
 	Use:   "card <agent-url>",
@@ -20,28 +23,48 @@ var cardCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(cardCmd)
+	cardCmd.Flags().BoolVar(&flagExtended, "extended", false, "Fetch the authenticated extended agent card")
 }
 
 func runCard(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	baseURL := args[0]
 
-	// The card subcommand only needs to display the agent card; creating
-	// a full A2A client is unnecessary and would fail on v0.3-only servers
-	// that lack supportedInterfaces. ResolveCard handles both v1.0 and v0.3
-	// formats and skips client creation entirely.
-	// V03RESTMount is intentionally disabled so the card subcommand
-	// displays raw URLs from the server rather than rewritten URLs.
-	opts := clientOptions(baseURL)
-	opts.V03RESTMount = false
-	card, err := client.ResolveCard(ctx, opts)
-	if err != nil {
-		return err
+	var card *a2a.AgentCard
+
+	if flagExtended {
+		// The extended card requires a full A2A client because
+		// GetExtendedAgentCard is an authenticated protocol-level call.
+		opts := clientOptions(baseURL)
+		a2aClient, _, err := client.New(ctx, opts)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = a2aClient.Destroy() }()
+
+		card, err = a2aClient.GetExtendedAgentCard(ctx, &a2a.GetExtendedAgentCardRequest{})
+		if err != nil {
+			return err
+		}
+	} else {
+		// The card subcommand only needs to display the agent card; creating
+		// a full A2A client is unnecessary and would fail on v0.3-only servers
+		// that lack supportedInterfaces. ResolveCard handles both v1.0 and v0.3
+		// formats and skips client creation entirely.
+		// V03RESTMount is intentionally disabled so the card subcommand
+		// displays raw URLs from the server rather than rewritten URLs.
+		opts := clientOptions(baseURL)
+		opts.V03RESTMount = false
+		var err error
+		card, err = client.ResolveCard(ctx, opts)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Validate the resolved card. Issues are surfaced in the display and
-	// (as of this change) ERROR-level issues cause the command to exit
-	// non-zero so CI pipelines catch malformed cards.
+	// ERROR-level issues cause the command to exit non-zero so CI pipelines
+	// catch malformed cards.
 	result := cardcheck.Run(card)
 
 	out := cmd.OutOrStdout()
