@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	flagChatFiles    []string
-	flagChatFileURLs []string
+	flagChatFiles       []string
+	flagChatFileURLs    []string
+	flagChatOutputModes []string
 )
 
 var flagChatSimple bool
@@ -42,6 +43,8 @@ func init() {
 		"Use a line-mode REPL (bufio.Scanner) instead of the TUI. IME-safe fallback.")
 	chatCmd.Flags().StringArrayVar(&flagChatFiles, "file", nil, "Attach a local file to the first turn (repeatable)")
 	chatCmd.Flags().StringArrayVar(&flagChatFileURLs, "file-url", nil, "Attach a file by URL to the first turn (repeatable)")
+	chatCmd.Flags().StringArrayVar(&flagChatOutputModes, "accepted-output-mode", nil,
+		"Accepted output MIME type for every turn (repeatable, e.g. text/plain, application/json)")
 	rootCmd.AddCommand(chatCmd)
 }
 
@@ -73,10 +76,11 @@ func runChat(cmd *cobra.Command, args []string) error {
 	// --json is incompatible with the full-screen TUI; fall back to
 	// simple mode silently so existing --json pipelines continue to
 	// work when users add `chat` to their scripts.
+	sendCfg := buildSendConfig(flagChatOutputModes)
 	useSimple := flagChatSimple || flagJSON
 
 	if useSimple {
-		return chat.RunSimple(ctx, a2aClient, card, baseURL, flagJSON, initialParts)
+		return chat.RunSimple(ctx, a2aClient, card, baseURL, flagJSON, initialParts, sendCfg)
 	}
-	return chat.RunTUI(ctx, a2aClient, card, baseURL, initialParts)
+	return chat.RunTUI(ctx, a2aClient, card, baseURL, initialParts, sendCfg)
 }

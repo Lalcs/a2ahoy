@@ -164,7 +164,7 @@ func (c *Client) cancelTaskURL(taskID string) string {
 // SendMessage sends a message to the Vertex AI A2A endpoint and returns
 // the completed task. It always sends with blocking: true.
 func (c *Client) SendMessage(ctx context.Context, a2aReq *a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
-	wireReq := buildSendRequest(a2aReq.Message)
+	wireReq := buildSendRequest(a2aReq)
 
 	body, err := json.Marshal(wireReq)
 	if err != nil {
@@ -200,7 +200,7 @@ func (c *Client) SendMessage(ctx context.Context, a2aReq *a2a.SendMessageRequest
 // are buffered per the SSE Living Standard and dispatched on blank lines.
 func (c *Client) SendStreamingMessage(ctx context.Context, a2aReq *a2a.SendMessageRequest) iter.Seq2[a2a.Event, error] {
 	return func(yield func(a2a.Event, error) bool) {
-		wireReq := buildStreamRequest(a2aReq.Message)
+		wireReq := buildStreamRequest(a2aReq)
 
 		body, err := json.Marshal(wireReq)
 		if err != nil {

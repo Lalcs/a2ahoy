@@ -41,6 +41,9 @@ func resetGlobalFlags(t *testing.T) {
 	flagStreamFileURLs = nil
 	flagChatFiles = nil
 	flagChatFileURLs = nil
+	flagSendOutputModes = nil
+	flagStreamOutputModes = nil
+	flagChatOutputModes = nil
 	// Prevent env var leakage from ambient environment.
 	t.Setenv(bearerTokenEnvVar, "")
 	// Reset Changed state on subcommand-local flags so tests are
@@ -2360,5 +2363,42 @@ func TestRunStream_WithFileURL(t *testing.T) {
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("stream --file-url failed: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// --accepted-output-mode flag tests
+// ---------------------------------------------------------------------------
+
+func TestRunSend_WithAcceptedOutputMode(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{
+		"send", ts.URL, "hello",
+		"--accepted-output-mode", "text/plain",
+		"--accepted-output-mode", "application/json",
+	})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("send --accepted-output-mode failed: %v", err)
+	}
+}
+
+func TestRunStream_WithAcceptedOutputMode(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{
+		"stream", ts.URL, "hello",
+		"--accepted-output-mode", "text/plain",
+	})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("stream --accepted-output-mode failed: %v", err)
 	}
 }

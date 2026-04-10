@@ -244,7 +244,7 @@ func TestChatCommand_HasSimpleFlag(t *testing.T) {
 	}
 }
 
-func TestCommands_HaveFileFlags(t *testing.T) {
+func TestCommands_HaveStringArrayFlags(t *testing.T) {
 	cmds := []struct {
 		name string
 		cmd  *cobra.Command
@@ -253,8 +253,9 @@ func TestCommands_HaveFileFlags(t *testing.T) {
 		{"stream", streamCmd},
 		{"chat", chatCmd},
 	}
+	flags := []string{"file", "file-url", "accepted-output-mode"}
 	for _, tt := range cmds {
-		for _, flag := range []string{"file", "file-url"} {
+		for _, flag := range flags {
 			t.Run(tt.name+"/"+flag, func(t *testing.T) {
 				f := tt.cmd.Flags().Lookup(flag)
 				if f == nil {

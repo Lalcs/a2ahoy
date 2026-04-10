@@ -84,24 +84,41 @@ func newWireMessage(msg *a2a.Message) wireMessage {
 	return wm
 }
 
-// buildSendRequest converts an a2a.Message into a Vertex AI sendRequest
-// for the blocking message:send endpoint. It injects blocking: true.
-func buildSendRequest(msg *a2a.Message) sendRequest {
+// hasOutputModes reports whether the request carries non-empty
+// AcceptedOutputModes that should be propagated to the wire format.
+func hasOutputModes(req *a2a.SendMessageRequest) bool {
+	return req.Config != nil && len(req.Config.AcceptedOutputModes) > 0
+}
+
+// buildSendRequest converts an a2a.SendMessageRequest into a Vertex AI
+// sendRequest for the blocking message:send endpoint. It injects
+// blocking: true and propagates AcceptedOutputModes from the request's
+// Config when present.
+func buildSendRequest(req *a2a.SendMessageRequest) sendRequest {
+	cfg := &wireConfig{Blocking: true}
+	if hasOutputModes(req) {
+		cfg.AcceptedOutputModes = req.Config.AcceptedOutputModes
+	}
 	return sendRequest{
-		Message: newWireMessage(msg),
-		Configuration: &wireConfig{
-			Blocking: true,
-		},
+		Message:       newWireMessage(req.Message),
+		Configuration: cfg,
 	}
 }
 
-// buildStreamRequest converts an a2a.Message into a Vertex AI sendRequest
-// for the message:stream endpoint. Streaming is inherently non-blocking,
-// so Configuration is omitted to avoid a semantic mismatch with blocking: true.
-func buildStreamRequest(msg *a2a.Message) sendRequest {
-	return sendRequest{
-		Message: newWireMessage(msg),
+// buildStreamRequest converts an a2a.SendMessageRequest into a Vertex AI
+// sendRequest for the message:stream endpoint. Streaming is inherently
+// non-blocking, so Configuration is only included when AcceptedOutputModes
+// are specified.
+func buildStreamRequest(req *a2a.SendMessageRequest) sendRequest {
+	sr := sendRequest{
+		Message: newWireMessage(req.Message),
 	}
+	if hasOutputModes(req) {
+		sr.Configuration = &wireConfig{
+			AcceptedOutputModes: req.Config.AcceptedOutputModes,
+		}
+	}
+	return sr
 }
 
 // toA2ATask converts a Vertex AI wireTask response into an a2a.Task.

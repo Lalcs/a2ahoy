@@ -12,7 +12,7 @@ func TestBuildSendRequest_TextMessage(t *testing.T) {
 	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
 	msg.ID = "msg-001"
 
-	req := buildSendRequest(msg)
+	req := buildSendRequest(&a2a.SendMessageRequest{Message: msg})
 
 	if req.Message.MessageID != "msg-001" {
 		t.Errorf("messageId: got %q, want %q", req.Message.MessageID, "msg-001")
@@ -32,7 +32,7 @@ func TestBuildSendRequest_GeneratesMessageID(t *testing.T) {
 	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
 	// msg.ID is empty by default from NewMessage
 
-	req := buildSendRequest(msg)
+	req := buildSendRequest(&a2a.SendMessageRequest{Message: msg})
 
 	if req.Message.MessageID == "" {
 		t.Error("messageId should be auto-generated when empty")
@@ -61,7 +61,7 @@ func TestBuildSendRequest_JSONFormat(t *testing.T) {
 	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
 	msg.ID = "msg-001"
 
-	req := buildSendRequest(msg)
+	req := buildSendRequest(&a2a.SendMessageRequest{Message: msg})
 
 	b, err := json.Marshal(req)
 	if err != nil {
@@ -197,7 +197,7 @@ func TestBuildStreamRequest_OmitsConfiguration(t *testing.T) {
 	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
 	msg.ID = "msg-001"
 
-	req := buildStreamRequest(msg)
+	req := buildStreamRequest(&a2a.SendMessageRequest{Message: msg})
 
 	if req.Configuration != nil {
 		t.Errorf("stream request should omit Configuration, got %+v", req.Configuration)
@@ -214,10 +214,80 @@ func TestBuildStreamRequest_GeneratesMessageID(t *testing.T) {
 	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
 	// msg.ID is empty from NewMessage
 
-	req := buildStreamRequest(msg)
+	req := buildStreamRequest(&a2a.SendMessageRequest{Message: msg})
 
 	if req.Message.MessageID == "" {
 		t.Error("messageId should be auto-generated when empty")
+	}
+}
+
+func TestBuildSendRequest_WithAcceptedOutputModes(t *testing.T) {
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "msg-001"
+
+	req := buildSendRequest(&a2a.SendMessageRequest{
+		Message: msg,
+		Config: &a2a.SendMessageConfig{
+			AcceptedOutputModes: []string{"text/plain", "application/json"},
+		},
+	})
+
+	if req.Configuration == nil {
+		t.Fatal("Configuration should not be nil")
+	}
+	if !req.Configuration.Blocking {
+		t.Error("configuration.blocking should be true")
+	}
+	if len(req.Configuration.AcceptedOutputModes) != 2 {
+		t.Fatalf("AcceptedOutputModes length: got %d, want 2", len(req.Configuration.AcceptedOutputModes))
+	}
+	if req.Configuration.AcceptedOutputModes[0] != "text/plain" {
+		t.Errorf("AcceptedOutputModes[0]: got %q, want %q", req.Configuration.AcceptedOutputModes[0], "text/plain")
+	}
+	if req.Configuration.AcceptedOutputModes[1] != "application/json" {
+		t.Errorf("AcceptedOutputModes[1]: got %q, want %q", req.Configuration.AcceptedOutputModes[1], "application/json")
+	}
+}
+
+func TestBuildSendRequest_NilConfig(t *testing.T) {
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "msg-001"
+
+	req := buildSendRequest(&a2a.SendMessageRequest{Message: msg})
+
+	if req.Configuration == nil {
+		t.Fatal("Configuration should not be nil (blocking must be set)")
+	}
+	if !req.Configuration.Blocking {
+		t.Error("configuration.blocking should be true")
+	}
+	if len(req.Configuration.AcceptedOutputModes) != 0 {
+		t.Errorf("AcceptedOutputModes should be empty, got %v", req.Configuration.AcceptedOutputModes)
+	}
+}
+
+func TestBuildStreamRequest_WithAcceptedOutputModes(t *testing.T) {
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "msg-001"
+
+	req := buildStreamRequest(&a2a.SendMessageRequest{
+		Message: msg,
+		Config: &a2a.SendMessageConfig{
+			AcceptedOutputModes: []string{"text/plain"},
+		},
+	})
+
+	if req.Configuration == nil {
+		t.Fatal("Configuration should not be nil when AcceptedOutputModes are set")
+	}
+	if req.Configuration.Blocking {
+		t.Error("stream configuration.blocking should be false")
+	}
+	if len(req.Configuration.AcceptedOutputModes) != 1 {
+		t.Fatalf("AcceptedOutputModes length: got %d, want 1", len(req.Configuration.AcceptedOutputModes))
+	}
+	if req.Configuration.AcceptedOutputModes[0] != "text/plain" {
+		t.Errorf("AcceptedOutputModes[0]: got %q, want %q", req.Configuration.AcceptedOutputModes[0], "text/plain")
 	}
 }
 

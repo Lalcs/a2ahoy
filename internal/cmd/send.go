@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	flagSendFiles    []string
-	flagSendFileURLs []string
+	flagSendFiles       []string
+	flagSendFileURLs    []string
+	flagSendOutputModes []string
 )
 
 var sendCmd = &cobra.Command{
@@ -27,6 +28,8 @@ var sendCmd = &cobra.Command{
 func init() {
 	sendCmd.Flags().StringArrayVar(&flagSendFiles, "file", nil, "Attach a local file (repeatable)")
 	sendCmd.Flags().StringArrayVar(&flagSendFileURLs, "file-url", nil, "Attach a file by URL (repeatable)")
+	sendCmd.Flags().StringArrayVar(&flagSendOutputModes, "accepted-output-mode", nil,
+		"Accepted output MIME type (repeatable, e.g. text/plain, application/json)")
 	rootCmd.AddCommand(sendCmd)
 }
 
@@ -49,6 +52,7 @@ func runSend(cmd *cobra.Command, args []string) error {
 	msg := a2a.NewMessage(a2a.MessageRoleUser, parts...)
 	req := &a2a.SendMessageRequest{
 		Message: msg,
+		Config:  buildSendConfig(flagSendOutputModes),
 	}
 
 	result, err := a2aClient.SendMessage(ctx, req)

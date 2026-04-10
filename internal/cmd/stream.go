@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	flagStreamFiles    []string
-	flagStreamFileURLs []string
+	flagStreamFiles       []string
+	flagStreamFileURLs    []string
+	flagStreamOutputModes []string
 )
 
 var streamCmd = &cobra.Command{
@@ -40,6 +41,8 @@ var newStreamContext = defaultSignalContext
 func init() {
 	streamCmd.Flags().StringArrayVar(&flagStreamFiles, "file", nil, "Attach a local file (repeatable)")
 	streamCmd.Flags().StringArrayVar(&flagStreamFileURLs, "file-url", nil, "Attach a file by URL (repeatable)")
+	streamCmd.Flags().StringArrayVar(&flagStreamOutputModes, "accepted-output-mode", nil,
+		"Accepted output MIME type (repeatable, e.g. text/plain, application/json)")
 	rootCmd.AddCommand(streamCmd)
 }
 
@@ -64,6 +67,7 @@ func runStream(cmd *cobra.Command, args []string) error {
 	msg := a2a.NewMessage(a2a.MessageRoleUser, parts...)
 	req := &a2a.SendMessageRequest{
 		Message: msg,
+		Config:  buildSendConfig(flagStreamOutputModes),
 	}
 
 	return consumeEventStream(ctx, cmd, a2aClient.SendStreamingMessage(ctx, req), "stream error")

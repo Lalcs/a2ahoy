@@ -11,11 +11,16 @@ import (
 // The resulting request is ready to hand to A2AClient.SendMessage or
 // A2AClient.SendStreamingMessage.
 //
+// cfg, when non-nil, is attached as the request's Configuration so the
+// agent knows which output MIME types the client accepts. Pass nil to
+// omit the configuration key from the JSON-RPC request (the default
+// when --accepted-output-mode is not specified).
+//
 // The text part is always placed first so agents see the user's
 // instruction before any attached data. The variadic extraParts
 // parameter preserves backward compatibility — existing callers that
 // pass no extra parts continue to work identically.
-func BuildChatRequest(state *State, text string, extraParts ...*a2a.Part) *a2a.SendMessageRequest {
+func BuildChatRequest(state *State, text string, cfg *a2a.SendMessageConfig, extraParts ...*a2a.Part) *a2a.SendMessageRequest {
 	parts := make([]*a2a.Part, 0, 1+len(extraParts))
 	parts = append(parts, a2a.NewTextPart(text))
 	parts = append(parts, extraParts...)
@@ -26,5 +31,5 @@ func BuildChatRequest(state *State, text string, extraParts ...*a2a.Part) *a2a.S
 	} else {
 		msg = a2a.NewMessageForTask(a2a.MessageRoleUser, state.TaskInfo(), parts...)
 	}
-	return &a2a.SendMessageRequest{Message: msg}
+	return &a2a.SendMessageRequest{Message: msg, Config: cfg}
 }

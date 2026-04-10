@@ -223,7 +223,7 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 
 	// Regular message → kick off the streaming turn. Attach initial
 	// file parts on the first turn only, then clear them.
-	req := BuildChatRequest(&m.state, text, m.initialParts...)
+	req := BuildChatRequest(&m.state, text, m.sendConfig, m.initialParts...)
 	m.initialParts = nil
 	return m.startStream(req)
 }
