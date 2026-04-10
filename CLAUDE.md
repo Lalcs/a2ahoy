@@ -32,7 +32,7 @@ go test ./internal/vertexai/...
 - `a2ahoy task cancel <agent-url> <task-id>` — Cancel a task by ID via `CancelTask`
 - `a2ahoy task list <agent-url>` — List tasks with optional filtering and pagination via `ListTasks`
 
-Global flags: `--gcp-auth` (GCP ADC ID token auth), `--vertex-ai` (Vertex AI Agent Engine mode), `--v03-rest-mount` (opt-in A2A v0.3 REST `/v1` mount-point prefix workaround for Python a2a-sdk / ADK / Vertex AI peers; applies to both standard and Vertex AI paths), `--json` (raw JSON output), `--header KEY=VALUE` (repeatable custom HTTP header), `--bearer-token` (static Bearer token, also from `A2A_BEARER_TOKEN` env var), `--timeout` (HTTP request timeout, e.g. `30s`, `5m`; 0 uses library defaults of 3min), `--retry` (max retry count for failed non-streaming requests with exponential backoff; 0 disables retry)
+Global flags: `--gcp-auth` (GCP ADC ID token auth), `--vertex-ai` (Vertex AI Agent Engine mode), `--v03-rest-mount` (opt-in A2A v0.3 REST `/v1` mount-point prefix workaround for Python a2a-sdk / ADK / Vertex AI peers; applies to both standard and Vertex AI paths), `--json` (raw JSON output), `--header KEY=VALUE` (repeatable custom HTTP header), `--bearer-token` (static Bearer token, also from `A2A_BEARER_TOKEN` env var), `--timeout` (HTTP request timeout, e.g. `30s`, `5m`; 0 uses library defaults of 3min), `--retry` (max retry count for failed non-streaming requests with exponential backoff; 0 disables retry), `--device-auth` (OAuth2 Device Code flow RFC 8628; auto-detects URLs from agent card SecuritySchemes), `--client-id` (OAuth2 client ID for device code auth), `--device-auth-url` (override device authorization endpoint), `--device-token-url` (override token endpoint), `--device-scope` (override OAuth2 scopes, repeatable)
 
 ## Architecture
 
@@ -53,6 +53,7 @@ internal/
 ├── auth/                    # HTTP header / authentication interceptors
 │   ├── gcp.go               # ID token interceptor (standard A2A, --gcp-auth)
 │   ├── gcp_access_token.go  # OAuth2 access token interceptor (Vertex AI)
+│   ├── device_code.go       # OAuth2 Device Code flow (RFC 8628, --device-auth)
 │   └── header.go            # User-supplied HTTP header interceptor (--header KEY=VALUE)
 ├── vertexai/                # Vertex AI Agent Engine support
 │   ├── endpoint.go          # URL parsing, v1→v1beta1 normalization, path generation

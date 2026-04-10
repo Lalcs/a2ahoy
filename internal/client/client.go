@@ -25,6 +25,7 @@ var (
 	newGCPAuthInterceptorFn        = auth.NewGCPAuthInterceptor
 	newGCPAccessTokenInterceptorFn = auth.NewGCPAccessTokenInterceptor
 	newBearerTokenInterceptorFn    = auth.NewBearerTokenInterceptor
+	newDeviceCodeInterceptorFn     = auth.NewDeviceCodeInterceptor
 )
 
 // Options configures client creation.
@@ -58,6 +59,26 @@ type Options struct {
 	// MaxRetries is the maximum number of retries for failed non-streaming requests.
 	// Zero means no retry.
 	MaxRetries int
+	// DeviceAuth enables OAuth2 Device Authorization Grant (RFC 8628).
+	// URLs and scopes are auto-detected from the agent card's SecuritySchemes.
+	// Only DeviceAuthClientID is required (no card-level equivalent).
+	// Mutually exclusive with GCPAuth, VertexAI, and BearerToken.
+	DeviceAuth bool
+	// DeviceAuthClientID is the OAuth2 client ID for the device code flow.
+	// Required when DeviceAuth is true.
+	DeviceAuthClientID string
+	// DeviceAuthURL optionally overrides the device authorization endpoint URL.
+	// When empty, the URL is extracted from the agent card's DeviceCodeOAuthFlow.
+	DeviceAuthURL string
+	// DeviceAuthTokenURL optionally overrides the token endpoint URL.
+	// When empty, the URL is extracted from the agent card's DeviceCodeOAuthFlow.
+	DeviceAuthTokenURL string
+	// DeviceAuthScopes optionally overrides the OAuth2 scopes.
+	// When empty, scopes are extracted from the agent card's DeviceCodeOAuthFlow.
+	DeviceAuthScopes []string
+	// PromptOutput is the writer for interactive device code prompts
+	// (typically os.Stderr). Required when DeviceAuth is true.
+	PromptOutput io.Writer
 }
 
 // httpClientFromTimeout returns an *http.Client with the given timeout,
@@ -305,6 +326,13 @@ func newStandard(ctx context.Context, opts Options) (A2AClient, *a2a.AgentCard, 
 func resolveStandardCard(ctx context.Context, opts Options) (*a2a.AgentCard, []a2aclient.FactoryOption, error) {
 	var resolveOpts []agentcard.ResolveOption
 	var clientOpts []a2aclient.FactoryOption
+	// deviceAuthCard is set when --device-auth pre-fetches the card to
+	// read SecuritySchemes before authentication. When non-nil, the
+	// resolver step at the bottom is skipped.
+	var deviceAuthCard *a2a.AgentCard
+
+	// Build once; reused by transports, resolver, and device-auth flow.
+	hc := buildHTTPClient(opts)
 
 	// BearerToken takes precedence over GCPAuth so library callers get
 	// deterministic behavior even if both fields are set; the CLI layer
@@ -328,6 +356,14 @@ func resolveStandardCard(ctx context.Context, opts Options) (*a2a.AgentCard, []a
 		}
 		resolveOpts = appendBearerResolveOpts(resolveOpts, token)
 		clientOpts = append(clientOpts, a2aclient.WithCallInterceptors(interceptor))
+	} else if opts.DeviceAuth {
+		interceptor, preCard, err := runDeviceCodeAuth(ctx, opts, hc)
+		if err != nil {
+			return nil, nil, err
+		}
+		// The card is already resolved; skip the resolver below.
+		deviceAuthCard = preCard
+		clientOpts = append(clientOpts, a2aclient.WithCallInterceptors(interceptor))
 	}
 
 	// Inject user-supplied headers (--header flag) into both the card
@@ -348,7 +384,6 @@ func resolveStandardCard(ctx context.Context, opts Options) (*a2a.AgentCard, []a
 	// default transports with ones using the custom HTTP client. When hc
 	// is nil (timeout=0, verbose=off), the library's auto-registered
 	// defaults (3min) are used.
-	hc := buildHTTPClient(opts)
 	if hc != nil {
 		clientOpts = append(clientOpts,
 			a2aclient.WithJSONRPCTransport(hc),
@@ -374,23 +409,130 @@ func resolveStandardCard(ctx context.Context, opts Options) (*a2a.AgentCard, []a
 		),
 	)
 
-	// Use a Resolver with the v0 compat card parser. The parser handles
-	// both v0.3 and v1.0 card formats via a union struct. When a custom
-	// timeout is specified, the resolver uses the same HTTP client.
-	resolverClient := agentcard.DefaultResolver.Client
-	if hc != nil {
-		resolverClient = hc
+	// When the card was pre-fetched by the device auth flow, skip the
+	// normal resolver and return the pre-fetched card directly.
+	if deviceAuthCard != nil {
+		return deviceAuthCard, clientOpts, nil
 	}
-	resolver := &agentcard.Resolver{
-		Client:     resolverClient,
-		CardParser: a2av0.NewAgentCardParser(),
-	}
-	card, err := resolver.Resolve(ctx, opts.BaseURL, resolveOpts...)
+
+	card, err := buildResolver(hc).Resolve(ctx, opts.BaseURL, resolveOpts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to resolve agent card: %w", err)
 	}
 
 	return card, clientOpts, nil
+}
+
+// buildResolver creates an agentcard.Resolver configured with the v0
+// compat parser. When hc is non-nil, it overrides the default HTTP client.
+func buildResolver(hc *http.Client) *agentcard.Resolver {
+	resolverClient := agentcard.DefaultResolver.Client
+	if hc != nil {
+		resolverClient = hc
+	}
+	return &agentcard.Resolver{
+		Client:     resolverClient,
+		CardParser: a2av0.NewAgentCardParser(),
+	}
+}
+
+// runDeviceCodeAuth pre-fetches the agent card (without auth) to read its
+// SecuritySchemes, extracts the DeviceCodeOAuthFlow configuration, runs the
+// RFC 8628 flow, and returns the interceptor plus the pre-fetched card.
+//
+// CLI flag overrides (DeviceAuthURL, DeviceAuthTokenURL, DeviceAuthScopes)
+// take precedence over card-derived values.
+func runDeviceCodeAuth(ctx context.Context, opts Options, hc *http.Client) (*auth.DeviceCodeInterceptor, *a2a.AgentCard, error) {
+	// Pre-fetch card without auth to read SecuritySchemes.
+	preCard, err := resolveCardWithoutAuth(ctx, opts, hc)
+	if err != nil {
+		// If card fetch fails but explicit URLs are provided, continue
+		// without the card.
+		if opts.DeviceAuthURL == "" || opts.DeviceAuthTokenURL == "" {
+			return nil, nil, fmt.Errorf("failed to fetch agent card for device auth auto-detection (provide --device-auth-url and --device-token-url to skip): %w", err)
+		}
+		preCard = nil
+	}
+
+	// Build config from card + overrides.
+	cfg := auth.DeviceCodeConfig{
+		ClientID: opts.DeviceAuthClientID,
+	}
+
+	// Extract from card if available.
+	if preCard != nil {
+		if cardCfg, findErr := findDeviceCodeFlow(preCard); findErr == nil {
+			cfg.DeviceAuthorizationURL = cardCfg.DeviceAuthorizationURL
+			cfg.TokenURL = cardCfg.TokenURL
+			cfg.Scopes = cardCfg.Scopes
+		}
+	}
+
+	// Apply CLI flag overrides.
+	if opts.DeviceAuthURL != "" {
+		cfg.DeviceAuthorizationURL = opts.DeviceAuthURL
+	}
+	if opts.DeviceAuthTokenURL != "" {
+		cfg.TokenURL = opts.DeviceAuthTokenURL
+	}
+	if len(opts.DeviceAuthScopes) > 0 {
+		cfg.Scopes = opts.DeviceAuthScopes
+	}
+
+	interceptor, err := newDeviceCodeInterceptorFn(ctx, cfg, opts.PromptOutput, hc)
+	if err != nil {
+		return nil, nil, fmt.Errorf("device code auth failed: %w", err)
+	}
+
+	return interceptor, preCard, nil
+}
+
+// findDeviceCodeFlow searches the agent card's SecuritySchemes for an
+// OAuth2SecurityScheme containing a DeviceCodeOAuthFlow and returns a
+// DeviceCodeConfig populated with the flow's URLs and scopes.
+func findDeviceCodeFlow(card *a2a.AgentCard) (*auth.DeviceCodeConfig, error) {
+	if card == nil || card.SecuritySchemes == nil {
+		return nil, fmt.Errorf("agent card has no security schemes")
+	}
+	for _, scheme := range card.SecuritySchemes {
+		oauth2Scheme, ok := scheme.(a2a.OAuth2SecurityScheme)
+		if !ok {
+			continue
+		}
+		dcFlow, ok := oauth2Scheme.Flows.(a2a.DeviceCodeOAuthFlow)
+		if !ok {
+			continue
+		}
+		scopes := make([]string, 0, len(dcFlow.Scopes))
+		for scope := range dcFlow.Scopes {
+			scopes = append(scopes, scope)
+		}
+		return &auth.DeviceCodeConfig{
+			DeviceAuthorizationURL: dcFlow.DeviceAuthorizationURL,
+			TokenURL:               dcFlow.TokenURL,
+			Scopes:                 scopes,
+		}, nil
+	}
+	return nil, fmt.Errorf("no device code OAuth2 flow found in agent card security schemes")
+}
+
+// resolveCardWithoutAuth fetches the agent card without any auth headers.
+// Used by the device-auth flow to read SecuritySchemes before authentication.
+// Custom --header entries are still applied (they may carry non-auth headers).
+func resolveCardWithoutAuth(ctx context.Context, opts Options, hc *http.Client) (*a2a.AgentCard, error) {
+	var resolveOpts []agentcard.ResolveOption
+
+	headerEntries, err := parseOptionHeaders(opts.Headers)
+	if err != nil {
+		return nil, err
+	}
+	resolveOpts = appendHeaderResolveOpts(resolveOpts, headerEntries)
+
+	card, err := buildResolver(hc).Resolve(ctx, opts.BaseURL, resolveOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve agent card: %w", err)
+	}
+	return card, nil
 }
 
 // ResolveCard fetches and parses an agent card without creating an A2A client.

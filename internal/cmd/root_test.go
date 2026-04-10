@@ -46,6 +46,11 @@ func TestRootCommand_HasPersistentFlags(t *testing.T) {
 		{"verbose"},
 		{"timeout"},
 		{"retry"},
+		{"device-auth"},
+		{"client-id"},
+		{"device-auth-url"},
+		{"device-token-url"},
+		{"device-scope"},
 	}
 	for _, tt := range tests {
 		f := rootCmd.PersistentFlags().Lookup(tt.flag)
@@ -479,5 +484,73 @@ func TestRootCommand_BearerTokenEnvFallback(t *testing.T) {
 				t.Errorf("flagBearerToken: got %q, want %q", flagBearerToken, tt.want)
 			}
 		})
+	}
+}
+
+func TestRootCommand_DeviceAuthMutualExclusion(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr bool
+	}{
+		{
+			name:    "device-auth + gcp-auth returns error",
+			args:    []string{"--device-auth", "--gcp-auth", "card", "http://example.com"},
+			wantErr: true,
+		},
+		{
+			name:    "device-auth + vertex-ai returns error",
+			args:    []string{"--device-auth", "--vertex-ai", "card", "http://example.com"},
+			wantErr: true,
+		},
+		{
+			name:    "device-auth + bearer-token returns error",
+			args:    []string{"--device-auth", "--bearer-token=x", "card", "http://example.com"},
+			wantErr: true,
+		},
+		{
+			name:    "device-auth only is allowed",
+			args:    []string{"--device-auth", "card", "http://example.com"},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset flags before each test case.
+			flagGCPAuth = false
+			flagVertexAI = false
+			flagBearerToken = ""
+			flagDeviceAuth = false
+			t.Setenv(bearerTokenEnvVar, "")
+
+			rootCmd.SetArgs(tt.args)
+			rootCmd.SetOut(io.Discard)
+			rootCmd.SetErr(io.Discard)
+
+			err := rootCmd.Execute()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error but got nil")
+				}
+				if !strings.Contains(err.Error(), "cannot be used together") {
+					t.Errorf("unexpected error message: %v", err)
+				}
+			}
+			// Non-error cases may still fail on network access; only check
+			// the mutual-exclusion error is absent.
+			if !tt.wantErr && err != nil && strings.Contains(err.Error(), "cannot be used together") {
+				t.Fatalf("unexpected mutual-exclusion error: %v", err)
+			}
+		})
+	}
+}
+
+func TestRootCommand_DeviceScopeFlagIsStringArray(t *testing.T) {
+	f := rootCmd.PersistentFlags().Lookup("device-scope")
+	if f == nil {
+		t.Fatal("device-scope flag missing")
+	}
+	if got := f.Value.Type(); got != "stringArray" {
+		t.Errorf("--device-scope flag type: got %q, want %q", got, "stringArray")
 	}
 }

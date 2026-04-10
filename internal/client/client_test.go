@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Lalcs/a2ahoy/internal/auth"
@@ -1146,5 +1148,286 @@ func TestNew_BearerTokenInterceptorError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for bearer token interceptor failure")
+	}
+}
+
+// --- Device Code Auth tests ---
+
+// withMockDeviceCode overrides the device code interceptor factory with one
+// that returns a fake interceptor backed by the given token.
+func withMockDeviceCode(t *testing.T, token string) {
+	t.Helper()
+	orig := newDeviceCodeInterceptorFn
+	t.Cleanup(func() { newDeviceCodeInterceptorFn = orig })
+	newDeviceCodeInterceptorFn = func(ctx context.Context, cfg auth.DeviceCodeConfig, promptOut io.Writer, httpClient *http.Client) (*auth.DeviceCodeInterceptor, error) {
+		return auth.NewDeviceCodeInterceptorFromToken(token), nil
+	}
+}
+
+// withFailingDeviceCode overrides the device code interceptor factory to
+// return an error.
+func withFailingDeviceCode(t *testing.T) {
+	t.Helper()
+	orig := newDeviceCodeInterceptorFn
+	t.Cleanup(func() { newDeviceCodeInterceptorFn = orig })
+	newDeviceCodeInterceptorFn = func(ctx context.Context, cfg auth.DeviceCodeConfig, promptOut io.Writer, httpClient *http.Client) (*auth.DeviceCodeInterceptor, error) {
+		return nil, fmt.Errorf("mock device code error")
+	}
+}
+
+// v1CardWithDeviceCodeJSON returns a v1 card JSON with an OAuth2 security
+// scheme containing a DeviceCodeOAuthFlow.
+func v1CardWithDeviceCodeJSON(url string) string {
+	return fmt.Sprintf(`{
+		"name": "Test Device Auth Agent",
+		"description": "A v1 test agent with device code auth",
+		"version": "1.0",
+		"capabilities": {},
+		"defaultInputModes": ["text/plain"],
+		"defaultOutputModes": ["text/plain"],
+		"supportedInterfaces": [{
+			"url": %q,
+			"protocolBinding": "JSONRPC",
+			"protocolVersion": "1.0"
+		}],
+		"securitySchemes": {
+			"myoauth": {
+				"oauth2SecurityScheme": {
+					"flows": {
+						"deviceCode": {
+							"deviceAuthorizationUrl": "https://auth.example.com/device",
+							"tokenUrl": "https://auth.example.com/token",
+							"scopes": {
+								"read": "Read access",
+								"write": "Write access"
+							}
+						}
+					}
+				}
+			}
+		},
+		"securityRequirements": [{"myoauth": ["read"]}],
+		"skills": []
+	}`, url)
+}
+
+func TestNew_DeviceAuth_Success(t *testing.T) {
+	ts := newCardServer(t, v1CardWithDeviceCodeJSON)
+	defer ts.Close()
+
+	withMockDeviceCode(t, "fake-device-token")
+
+	ctx := context.Background()
+	a2aClient, card, err := New(ctx, Options{
+		BaseURL:            ts.URL,
+		DeviceAuth:         true,
+		DeviceAuthClientID: "test-client",
+		PromptOutput:       io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = a2aClient.Destroy() }()
+
+	if card.Name != "Test Device Auth Agent" {
+		t.Errorf("got card name %q, want %q", card.Name, "Test Device Auth Agent")
+	}
+}
+
+func TestNew_DeviceAuth_InterceptorError(t *testing.T) {
+	ts := newCardServer(t, v1CardWithDeviceCodeJSON)
+	defer ts.Close()
+
+	withFailingDeviceCode(t)
+
+	ctx := context.Background()
+	_, _, err := New(ctx, Options{
+		BaseURL:            ts.URL,
+		DeviceAuth:         true,
+		DeviceAuthClientID: "test-client",
+		PromptOutput:       io.Discard,
+	})
+	if err == nil {
+		t.Fatal("expected error for device code interceptor failure")
+	}
+	if !strings.Contains(err.Error(), "device code auth failed") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestNew_DeviceAuth_NoFlowInCard(t *testing.T) {
+	// Use a regular card without DeviceCodeOAuthFlow.
+	ts := newCardServer(t, v1CardJSON)
+	defer ts.Close()
+
+	withMockDeviceCode(t, "fake-token")
+
+	ctx := context.Background()
+	// Card has no DeviceCodeOAuthFlow, and no explicit URLs provided.
+	// The mock interceptor receives empty URLs in cfg → the interceptor
+	// factory would normally fail on validation, but we mock it.
+	// The test verifies that the flow still works (the mock ignores cfg).
+	a2aClient, _, err := New(ctx, Options{
+		BaseURL:            ts.URL,
+		DeviceAuth:         true,
+		DeviceAuthClientID: "test-client",
+		PromptOutput:       io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = a2aClient.Destroy() }()
+}
+
+func TestNew_DeviceAuth_OverrideURLs(t *testing.T) {
+	ts := newCardServer(t, v1CardJSON)
+	defer ts.Close()
+
+	var capturedCfg auth.DeviceCodeConfig
+	orig := newDeviceCodeInterceptorFn
+	t.Cleanup(func() { newDeviceCodeInterceptorFn = orig })
+	newDeviceCodeInterceptorFn = func(ctx context.Context, cfg auth.DeviceCodeConfig, promptOut io.Writer, httpClient *http.Client) (*auth.DeviceCodeInterceptor, error) {
+		capturedCfg = cfg
+		return auth.NewDeviceCodeInterceptorFromToken("tok"), nil
+	}
+
+	ctx := context.Background()
+	a2aClient, _, err := New(ctx, Options{
+		BaseURL:            ts.URL,
+		DeviceAuth:         true,
+		DeviceAuthClientID: "override-client",
+		DeviceAuthURL:      "https://override.example.com/device",
+		DeviceAuthTokenURL: "https://override.example.com/token",
+		DeviceAuthScopes:   []string{"custom"},
+		PromptOutput:       io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = a2aClient.Destroy() }()
+
+	if capturedCfg.ClientID != "override-client" {
+		t.Errorf("ClientID: got %q, want %q", capturedCfg.ClientID, "override-client")
+	}
+	if capturedCfg.DeviceAuthorizationURL != "https://override.example.com/device" {
+		t.Errorf("DeviceAuthorizationURL: got %q, want %q", capturedCfg.DeviceAuthorizationURL, "https://override.example.com/device")
+	}
+	if capturedCfg.TokenURL != "https://override.example.com/token" {
+		t.Errorf("TokenURL: got %q, want %q", capturedCfg.TokenURL, "https://override.example.com/token")
+	}
+	if len(capturedCfg.Scopes) != 1 || capturedCfg.Scopes[0] != "custom" {
+		t.Errorf("Scopes: got %v, want [custom]", capturedCfg.Scopes)
+	}
+}
+
+func TestNew_DeviceAuth_CardAutoDetectsURLs(t *testing.T) {
+	ts := newCardServer(t, v1CardWithDeviceCodeJSON)
+	defer ts.Close()
+
+	var capturedCfg auth.DeviceCodeConfig
+	orig := newDeviceCodeInterceptorFn
+	t.Cleanup(func() { newDeviceCodeInterceptorFn = orig })
+	newDeviceCodeInterceptorFn = func(ctx context.Context, cfg auth.DeviceCodeConfig, promptOut io.Writer, httpClient *http.Client) (*auth.DeviceCodeInterceptor, error) {
+		capturedCfg = cfg
+		return auth.NewDeviceCodeInterceptorFromToken("tok"), nil
+	}
+
+	ctx := context.Background()
+	a2aClient, _, err := New(ctx, Options{
+		BaseURL:            ts.URL,
+		DeviceAuth:         true,
+		DeviceAuthClientID: "my-client",
+		PromptOutput:       io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = a2aClient.Destroy() }()
+
+	if capturedCfg.ClientID != "my-client" {
+		t.Errorf("ClientID: got %q, want %q", capturedCfg.ClientID, "my-client")
+	}
+	if capturedCfg.DeviceAuthorizationURL != "https://auth.example.com/device" {
+		t.Errorf("DeviceAuthorizationURL: got %q, want %q", capturedCfg.DeviceAuthorizationURL, "https://auth.example.com/device")
+	}
+	if capturedCfg.TokenURL != "https://auth.example.com/token" {
+		t.Errorf("TokenURL: got %q, want %q", capturedCfg.TokenURL, "https://auth.example.com/token")
+	}
+	if len(capturedCfg.Scopes) == 0 {
+		t.Error("Scopes should be auto-detected from card")
+	}
+}
+
+func TestFindDeviceCodeFlow_Success(t *testing.T) {
+	card := &a2a.AgentCard{
+		SecuritySchemes: a2a.NamedSecuritySchemes{
+			"myoauth": a2a.OAuth2SecurityScheme{
+				Flows: a2a.DeviceCodeOAuthFlow{
+					DeviceAuthorizationURL: "https://auth.example.com/device",
+					TokenURL:               "https://auth.example.com/token",
+					Scopes:                 map[string]string{"read": "Read", "write": "Write"},
+				},
+			},
+		},
+	}
+
+	cfg, err := findDeviceCodeFlow(card)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.DeviceAuthorizationURL != "https://auth.example.com/device" {
+		t.Errorf("DeviceAuthorizationURL: got %q, want %q", cfg.DeviceAuthorizationURL, "https://auth.example.com/device")
+	}
+	if cfg.TokenURL != "https://auth.example.com/token" {
+		t.Errorf("TokenURL: got %q, want %q", cfg.TokenURL, "https://auth.example.com/token")
+	}
+	if len(cfg.Scopes) != 2 {
+		t.Errorf("Scopes: got %d, want 2", len(cfg.Scopes))
+	}
+}
+
+func TestFindDeviceCodeFlow_NoOAuth2(t *testing.T) {
+	card := &a2a.AgentCard{
+		SecuritySchemes: a2a.NamedSecuritySchemes{
+			"apikey": a2a.APIKeySecurityScheme{Name: "X-API-Key"},
+		},
+	}
+
+	_, err := findDeviceCodeFlow(card)
+	if err == nil {
+		t.Fatal("expected error when no OAuth2 scheme exists")
+	}
+}
+
+func TestFindDeviceCodeFlow_NoDeviceCode(t *testing.T) {
+	card := &a2a.AgentCard{
+		SecuritySchemes: a2a.NamedSecuritySchemes{
+			"myoauth": a2a.OAuth2SecurityScheme{
+				Flows: a2a.AuthorizationCodeOAuthFlow{
+					AuthorizationURL: "https://auth.example.com/authorize",
+					TokenURL:         "https://auth.example.com/token",
+				},
+			},
+		},
+	}
+
+	_, err := findDeviceCodeFlow(card)
+	if err == nil {
+		t.Fatal("expected error when no DeviceCode flow exists")
+	}
+}
+
+func TestFindDeviceCodeFlow_NilCard(t *testing.T) {
+	_, err := findDeviceCodeFlow(nil)
+	if err == nil {
+		t.Fatal("expected error for nil card")
+	}
+}
+
+func TestFindDeviceCodeFlow_NoSchemes(t *testing.T) {
+	card := &a2a.AgentCard{}
+	_, err := findDeviceCodeFlow(card)
+	if err == nil {
+		t.Fatal("expected error for card with no security schemes")
 	}
 }

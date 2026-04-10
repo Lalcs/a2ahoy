@@ -17,16 +17,21 @@ import (
 const bearerTokenEnvVar = "A2A_BEARER_TOKEN"
 
 var (
-	flagGCPAuth      bool
-	flagJSON         bool
-	flagVertexAI     bool
-	flagV03RESTMount bool
-	flagNoColor      bool
-	flagVerbose      bool
-	flagHeaders      []string
-	flagBearerToken  string
-	flagTimeout      time.Duration
-	flagRetry        int
+	flagGCPAuth        bool
+	flagJSON           bool
+	flagVertexAI       bool
+	flagV03RESTMount   bool
+	flagNoColor        bool
+	flagVerbose        bool
+	flagHeaders        []string
+	flagBearerToken    string
+	flagTimeout        time.Duration
+	flagRetry          int
+	flagDeviceAuth     bool
+	flagClientID       string
+	flagDeviceAuthURL  string
+	flagDeviceTokenURL string
+	flagDeviceScopes   []string
 )
 
 var rootCmd = &cobra.Command{
@@ -49,6 +54,15 @@ var rootCmd = &cobra.Command{
 		}
 		if flagBearerToken != "" && flagVertexAI {
 			return fmt.Errorf("--bearer-token and --vertex-ai cannot be used together")
+		}
+		if flagDeviceAuth && flagGCPAuth {
+			return fmt.Errorf("--device-auth and --gcp-auth cannot be used together")
+		}
+		if flagDeviceAuth && flagVertexAI {
+			return fmt.Errorf("--device-auth and --vertex-ai cannot be used together")
+		}
+		if flagDeviceAuth && flagBearerToken != "" {
+			return fmt.Errorf("--device-auth and --bearer-token cannot be used together")
 		}
 		if flagTimeout < 0 {
 			return fmt.Errorf("--timeout must be non-negative, got %s", flagTimeout)
@@ -84,6 +98,11 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagBearerToken, "bearer-token", "", "Bearer token for Authorization header (falls back to A2A_BEARER_TOKEN env var)")
 	rootCmd.PersistentFlags().DurationVar(&flagTimeout, "timeout", 0, "HTTP request timeout (e.g. 30s, 5m, 1h); 0 uses library defaults")
 	rootCmd.PersistentFlags().IntVar(&flagRetry, "retry", 0, "Maximum retry count for failed requests (0 disables retry)")
+	rootCmd.PersistentFlags().BoolVar(&flagDeviceAuth, "device-auth", false, "Enable OAuth2 Device Code flow (RFC 8628) authentication")
+	rootCmd.PersistentFlags().StringVar(&flagClientID, "client-id", "", "OAuth2 client ID for device code auth")
+	rootCmd.PersistentFlags().StringVar(&flagDeviceAuthURL, "device-auth-url", "", "Override device authorization endpoint URL (auto-detected from agent card)")
+	rootCmd.PersistentFlags().StringVar(&flagDeviceTokenURL, "device-token-url", "", "Override token endpoint URL (auto-detected from agent card)")
+	rootCmd.PersistentFlags().StringArrayVar(&flagDeviceScopes, "device-scope", nil, "Override OAuth2 scope for device code auth (repeatable)")
 }
 
 // clientOptions builds a client.Options from the global persistent flags and
@@ -95,16 +114,22 @@ func clientOptions(baseURL string) client.Options {
 		verboseOutput = os.Stderr
 	}
 	return client.Options{
-		BaseURL:       baseURL,
-		GCPAuth:       flagGCPAuth,
-		VertexAI:      flagVertexAI,
-		V03RESTMount:  flagV03RESTMount,
-		Verbose:       flagVerbose,
-		VerboseOutput: verboseOutput,
-		Headers:       flagHeaders,
-		BearerToken:   flagBearerToken,
-		Timeout:       flagTimeout,
-		MaxRetries:    flagRetry,
+		BaseURL:            baseURL,
+		GCPAuth:            flagGCPAuth,
+		VertexAI:           flagVertexAI,
+		V03RESTMount:       flagV03RESTMount,
+		Verbose:            flagVerbose,
+		VerboseOutput:      verboseOutput,
+		Headers:            flagHeaders,
+		BearerToken:        flagBearerToken,
+		Timeout:            flagTimeout,
+		MaxRetries:         flagRetry,
+		DeviceAuth:         flagDeviceAuth,
+		DeviceAuthClientID: flagClientID,
+		DeviceAuthURL:      flagDeviceAuthURL,
+		DeviceAuthTokenURL: flagDeviceTokenURL,
+		DeviceAuthScopes:   flagDeviceScopes,
+		PromptOutput:       os.Stderr,
 	}
 }
 
