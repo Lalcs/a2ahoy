@@ -52,6 +52,7 @@ func PrintTask(w io.Writer, task *a2a.Task) error {
 		for _, msg := range task.History {
 			_, _ = fmt.Fprintf(w, "%s ", styledTag(fmt.Sprintf("[%s]", msg.Role)))
 			printParts(w, msg.Parts)
+			printReferenceTasks(w, msg.ReferenceTasks)
 		}
 	}
 
@@ -69,7 +70,19 @@ func PrintTask(w io.Writer, task *a2a.Task) error {
 func printMessage(w io.Writer, msg *a2a.Message) error {
 	_, _ = fmt.Fprintf(w, "%s ", styledTag(fmt.Sprintf("[%s]", msg.Role)))
 	printParts(w, msg.Parts)
+	printReferenceTasks(w, msg.ReferenceTasks)
 	return nil
+}
+
+func printReferenceTasks(w io.Writer, refs []a2a.TaskID) {
+	if len(refs) == 0 {
+		return
+	}
+	ids := make([]string, len(refs))
+	for i, id := range refs {
+		ids[i] = string(id)
+	}
+	_, _ = fmt.Fprintf(w, "  %s %s\n", styledLabel("Reference Tasks:"), strings.Join(ids, ", "))
 }
 
 func printArtifact(w io.Writer, artifact *a2a.Artifact) {

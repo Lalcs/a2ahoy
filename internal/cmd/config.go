@@ -16,3 +16,16 @@ func buildSendConfig(acceptedOutputModes []string, returnImmediately bool) *a2a.
 		ReturnImmediately:   returnImmediately,
 	}
 }
+
+// toTaskIDs converts a string slice to a2a.TaskID slice.
+// Returns nil when the input is empty so the field is omitted from JSON.
+func toTaskIDs(ss []string) []a2a.TaskID {
+	if len(ss) == 0 {
+		return nil
+	}
+	ids := make([]a2a.TaskID, len(ss))
+	for i, s := range ss {
+		ids[i] = a2a.TaskID(s)
+	}
+	return ids
+}
