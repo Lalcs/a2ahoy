@@ -266,6 +266,48 @@ func TestBuildSendRequest_NilConfig(t *testing.T) {
 	}
 }
 
+func TestBuildSendRequest_ReturnImmediately(t *testing.T) {
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "msg-001"
+
+	req := buildSendRequest(&a2a.SendMessageRequest{
+		Message: msg,
+		Config: &a2a.SendMessageConfig{
+			ReturnImmediately: true,
+		},
+	})
+
+	if req.Configuration == nil {
+		t.Fatal("Configuration should not be nil")
+	}
+	if req.Configuration.Blocking {
+		t.Error("configuration.blocking should be false when ReturnImmediately is true")
+	}
+}
+
+func TestBuildSendRequest_ReturnImmediatelyWithOutputModes(t *testing.T) {
+	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
+	msg.ID = "msg-001"
+
+	req := buildSendRequest(&a2a.SendMessageRequest{
+		Message: msg,
+		Config: &a2a.SendMessageConfig{
+			ReturnImmediately:   true,
+			AcceptedOutputModes: []string{"text/plain"},
+		},
+	})
+
+	if req.Configuration == nil {
+		t.Fatal("Configuration should not be nil")
+	}
+	if req.Configuration.Blocking {
+		t.Error("configuration.blocking should be false when ReturnImmediately is true")
+	}
+	if len(req.Configuration.AcceptedOutputModes) != 1 {
+		t.Fatalf("AcceptedOutputModes length: got %d, want 1", len(req.Configuration.AcceptedOutputModes))
+	}
+}
+
 func TestBuildStreamRequest_WithAcceptedOutputModes(t *testing.T) {
 	msg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart("hello"))
 	msg.ID = "msg-001"

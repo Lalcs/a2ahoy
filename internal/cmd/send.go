@@ -15,6 +15,7 @@ var (
 	flagSendFiles       []string
 	flagSendFileURLs    []string
 	flagSendOutputModes []string
+	flagSendAsync       bool
 )
 
 var sendCmd = &cobra.Command{
@@ -30,6 +31,8 @@ func init() {
 	sendCmd.Flags().StringArrayVar(&flagSendFileURLs, "file-url", nil, "Attach a file by URL (repeatable)")
 	sendCmd.Flags().StringArrayVar(&flagSendOutputModes, "accepted-output-mode", nil,
 		"Accepted output MIME type (repeatable, e.g. text/plain, application/json)")
+	sendCmd.Flags().BoolVar(&flagSendAsync, "async", false,
+		"Return immediately after task creation (sets ReturnImmediately=true)")
 	rootCmd.AddCommand(sendCmd)
 }
 
@@ -52,7 +55,7 @@ func runSend(cmd *cobra.Command, args []string) error {
 	msg := a2a.NewMessage(a2a.MessageRoleUser, parts...)
 	req := &a2a.SendMessageRequest{
 		Message: msg,
-		Config:  buildSendConfig(flagSendOutputModes),
+		Config:  buildSendConfig(flagSendOutputModes, flagSendAsync),
 	}
 
 	result, err := a2aClient.SendMessage(ctx, req)

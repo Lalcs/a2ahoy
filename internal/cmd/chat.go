@@ -76,7 +76,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 	// --json is incompatible with the full-screen TUI; fall back to
 	// simple mode silently so existing --json pipelines continue to
 	// work when users add `chat` to their scripts.
-	sendCfg := buildSendConfig(flagChatOutputModes)
+	sendCfg := buildSendConfig(flagChatOutputModes, false)
 	useSimple := flagChatSimple || flagJSON
 
 	if useSimple {

@@ -91,11 +91,15 @@ func hasOutputModes(req *a2a.SendMessageRequest) bool {
 }
 
 // buildSendRequest converts an a2a.SendMessageRequest into a Vertex AI
-// sendRequest for the blocking message:send endpoint. It injects
-// blocking: true and propagates AcceptedOutputModes from the request's
-// Config when present.
+// sendRequest for the blocking message:send endpoint. It sets blocking
+// based on ReturnImmediately (inverted) and propagates
+// AcceptedOutputModes from the request's Config when present.
 func buildSendRequest(req *a2a.SendMessageRequest) sendRequest {
-	cfg := &wireConfig{Blocking: true}
+	blocking := true
+	if req.Config != nil && req.Config.ReturnImmediately {
+		blocking = false
+	}
+	cfg := &wireConfig{Blocking: blocking}
 	if hasOutputModes(req) {
 		cfg.AcceptedOutputModes = req.Config.AcceptedOutputModes
 	}

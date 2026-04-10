@@ -41,6 +41,7 @@ func resetGlobalFlags(t *testing.T) {
 	flagStreamFileURLs = nil
 	flagChatFiles = nil
 	flagChatFileURLs = nil
+	flagSendAsync = false
 	flagSendOutputModes = nil
 	flagStreamOutputModes = nil
 	flagChatOutputModes = nil
@@ -2384,6 +2385,22 @@ func TestRunSend_WithAcceptedOutputMode(t *testing.T) {
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("send --accepted-output-mode failed: %v", err)
+	}
+}
+
+func TestRunSend_WithAsync(t *testing.T) {
+	resetGlobalFlags(t)
+	ts := a2aTestServer(t)
+
+	rootCmd.SetArgs([]string{
+		"send", ts.URL, "hello",
+		"--async",
+	})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("send --async failed: %v", err)
 	}
 }
 

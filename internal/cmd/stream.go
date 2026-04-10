@@ -67,7 +67,7 @@ func runStream(cmd *cobra.Command, args []string) error {
 	msg := a2a.NewMessage(a2a.MessageRoleUser, parts...)
 	req := &a2a.SendMessageRequest{
 		Message: msg,
-		Config:  buildSendConfig(flagStreamOutputModes),
+		Config:  buildSendConfig(flagStreamOutputModes, false),
 	}
 
 	return consumeEventStream(ctx, cmd, a2aClient.SendStreamingMessage(ctx, req), "stream error")
