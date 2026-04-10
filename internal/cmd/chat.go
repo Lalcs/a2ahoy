@@ -76,11 +76,11 @@ func runChat(cmd *cobra.Command, args []string) error {
 	// --json is incompatible with the full-screen TUI; fall back to
 	// simple mode silently so existing --json pipelines continue to
 	// work when users add `chat` to their scripts.
-	sendCfg := buildSendConfig(flagChatOutputModes, false)
+	sendCfg := buildSendConfig(flagChatOutputModes, false, nil, nil)
 	useSimple := flagChatSimple || flagJSON
 
 	if useSimple {
-		return chat.RunSimple(ctx, a2aClient, card, baseURL, flagJSON, initialParts, sendCfg)
+		return chat.RunSimple(ctx, a2aClient, card, baseURL, flagJSON, initialParts, flagTenant, sendCfg)
 	}
-	return chat.RunTUI(ctx, a2aClient, card, baseURL, initialParts, sendCfg)
+	return chat.RunTUI(ctx, a2aClient, card, baseURL, initialParts, flagTenant, sendCfg)
 }

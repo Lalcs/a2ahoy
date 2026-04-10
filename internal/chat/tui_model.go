@@ -94,6 +94,9 @@ type Model struct {
 	// Applied to every turn's SendMessageRequest. Nil when the flag is not set.
 	sendConfig *a2a.SendMessageConfig
 
+	// tenant is the tenant identifier propagated from the global --tenant flag.
+	tenant string
+
 	// Layout.
 	width, height int
 	ready         bool // true once we have received at least one WindowSizeMsg
@@ -102,7 +105,7 @@ type Model struct {
 // newModel constructs a Model wired to the given client and card.
 // The textinput is focused immediately so the user can start typing
 // without any additional key press.
-func newModel(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, initialParts []*a2a.Part, cfg *a2a.SendMessageConfig) Model {
+func newModel(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, initialParts []*a2a.Part, tenant string, cfg *a2a.SendMessageConfig) Model {
 	ti := textinput.New()
 	ti.Prompt = "› "
 	// No Placeholder: in a terminal TUI the OS-level IME draws its
@@ -130,6 +133,7 @@ func newModel(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, init
 		client:       c,
 		agentCard:    card,
 		initialParts: initialParts,
+		tenant:       tenant,
 		sendConfig:   cfg,
 		viewport:     vp,
 		textInput:    ti,

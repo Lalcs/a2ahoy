@@ -32,6 +32,7 @@ var (
 	flagDeviceAuthURL  string
 	flagDeviceTokenURL string
 	flagDeviceScopes   []string
+	flagTenant         string
 )
 
 var rootCmd = &cobra.Command{
@@ -103,6 +104,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagDeviceAuthURL, "device-auth-url", "", "Override device authorization endpoint URL (auto-detected from agent card)")
 	rootCmd.PersistentFlags().StringVar(&flagDeviceTokenURL, "device-token-url", "", "Override token endpoint URL (auto-detected from agent card)")
 	rootCmd.PersistentFlags().StringArrayVar(&flagDeviceScopes, "device-scope", nil, "Override OAuth2 scope for device code auth (repeatable)")
+	rootCmd.PersistentFlags().StringVar(&flagTenant, "tenant", "", "Tenant identifier for multi-tenancy")
 }
 
 // clientOptions builds a client.Options from the global persistent flags and

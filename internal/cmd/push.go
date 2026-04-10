@@ -131,6 +131,7 @@ func runPushSet(cmd *cobra.Command, args []string) error {
 	}
 
 	req := &a2a.CreateTaskPushConfigRequest{
+		Tenant: flagTenant,
 		TaskID: a2a.TaskID(taskID),
 		Config: pushConfig,
 	}
@@ -160,6 +161,7 @@ func runPushGet(cmd *cobra.Command, args []string) error {
 	defer func() { _ = a2aClient.Destroy() }()
 
 	req := &a2a.GetTaskPushConfigRequest{
+		Tenant: flagTenant,
 		TaskID: a2a.TaskID(taskID),
 		ID:     configID,
 	}
@@ -191,6 +193,7 @@ func runPushList(cmd *cobra.Command, args []string) error {
 	pageToken, _ := cmd.Flags().GetString(flagNamePushPageToken)
 
 	req := &a2a.ListTaskPushConfigRequest{
+		Tenant:    flagTenant,
 		TaskID:    a2a.TaskID(taskID),
 		PageSize:  pageSize,
 		PageToken: pageToken,
@@ -221,6 +224,7 @@ func runPushDelete(cmd *cobra.Command, args []string) error {
 	defer func() { _ = a2aClient.Destroy() }()
 
 	req := &a2a.DeleteTaskPushConfigRequest{
+		Tenant: flagTenant,
 		TaskID: a2a.TaskID(taskID),
 		ID:     configID,
 	}

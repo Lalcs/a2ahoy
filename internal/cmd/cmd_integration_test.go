@@ -47,6 +47,13 @@ func resetGlobalFlags(t *testing.T) {
 	flagChatOutputModes = nil
 	flagSendReferenceTaskIDs = nil
 	flagStreamReferenceTaskIDs = nil
+	flagSendExtensions = nil
+	flagStreamExtensions = nil
+	flagSendMetadata = nil
+	flagStreamMetadata = nil
+	flagSendPushURL = ""
+	flagSendPushToken = ""
+	flagTenant = ""
 	// Prevent env var leakage from ambient environment.
 	t.Setenv(bearerTokenEnvVar, "")
 	// Reset Changed state on subcommand-local flags so tests are

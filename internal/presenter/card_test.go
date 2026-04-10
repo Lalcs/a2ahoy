@@ -189,6 +189,168 @@ func TestPrintAgentCard_WithSkills(t *testing.T) {
 	}
 }
 
+func TestPrintAgentCard_WithIconURL(t *testing.T) {
+	card := &a2a.AgentCard{
+		Name:        "TestAgent",
+		Description: "Test",
+		Version:     "1.0",
+		IconURL:     "https://example.com/icon.png",
+	}
+
+	var buf bytes.Buffer
+	if err := PrintAgentCard(&buf, card); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "Icon:        https://example.com/icon.png") {
+		t.Errorf("missing icon URL in output:\n%s", got)
+	}
+}
+
+func TestPrintAgentCard_WithSecuritySchemes(t *testing.T) {
+	card := &a2a.AgentCard{
+		Name:        "TestAgent",
+		Description: "Test",
+		Version:     "1.0",
+		SecuritySchemes: a2a.NamedSecuritySchemes{
+			"bearer_auth": a2a.HTTPAuthSecurityScheme{
+				Scheme:       "Bearer",
+				BearerFormat: "JWT",
+				Description:  "Bearer token auth",
+			},
+			"api_key": a2a.APIKeySecurityScheme{
+				Name:     "X-API-Key",
+				Location: a2a.APIKeySecuritySchemeLocationHeader,
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := PrintAgentCard(&buf, card); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	checks := []string{
+		"--- Security Schemes (2) ---",
+		"[api_key]",
+		"API Key",
+		"X-API-Key",
+		"header",
+		"[bearer_auth]",
+		"HTTP Auth",
+		"Bearer",
+		"JWT",
+	}
+	for _, want := range checks {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in output:\n%s", want, got)
+		}
+	}
+}
+
+func TestPrintAgentCard_WithOAuth2Scheme(t *testing.T) {
+	card := &a2a.AgentCard{
+		Name:        "TestAgent",
+		Description: "Test",
+		Version:     "1.0",
+		SecuritySchemes: a2a.NamedSecuritySchemes{
+			"oauth": a2a.OAuth2SecurityScheme{
+				Description: "OAuth2 auth",
+				Flows: a2a.DeviceCodeOAuthFlow{
+					DeviceAuthorizationURL: "https://auth.example.com/device",
+					TokenURL:               "https://auth.example.com/token",
+					Scopes:                 map[string]string{"read": "Read access"},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := PrintAgentCard(&buf, card); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	checks := []string{
+		"[oauth]",
+		"OAuth2",
+		"Device Code",
+		"https://auth.example.com/device",
+		"https://auth.example.com/token",
+	}
+	for _, want := range checks {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in output:\n%s", want, got)
+		}
+	}
+}
+
+func TestPrintAgentCard_WithSecurityRequirements(t *testing.T) {
+	card := &a2a.AgentCard{
+		Name:        "TestAgent",
+		Description: "Test",
+		Version:     "1.0",
+		SecurityRequirements: a2a.SecurityRequirementsOptions{
+			{
+				"bearer_auth": a2a.SecuritySchemeScopes{},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := PrintAgentCard(&buf, card); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	checks := []string{
+		"--- Security Requirements ---",
+		"bearer_auth",
+	}
+	for _, want := range checks {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in output:\n%s", want, got)
+		}
+	}
+}
+
+func TestPrintAgentCard_WithSignatures(t *testing.T) {
+	card := &a2a.AgentCard{
+		Name:        "TestAgent",
+		Description: "Test",
+		Version:     "1.0",
+		Signatures: []a2a.AgentCardSignature{
+			{
+				Protected: "eyJhbGciOiJFZDI1NTE5In0",
+				Signature: "abc123def456",
+				Header:    map[string]any{"kid": "key-1"},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := PrintAgentCard(&buf, card); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	checks := []string{
+		"--- Signatures (1) ---",
+		"[1]",
+		"Protected: eyJhbGciOiJFZDI1NTE5In0",
+		"Signature: abc123def456",
+		"Header:",
+		"kid=key-1",
+	}
+	for _, want := range checks {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in output:\n%s", want, got)
+		}
+	}
+}
+
 func TestPrintAgentCard_NoProviderNoDocsNoInterfacesNoModesNoSkills(t *testing.T) {
 	card := &a2a.AgentCard{
 		Name:        "MinimalAgent",

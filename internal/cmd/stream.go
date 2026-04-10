@@ -19,6 +19,8 @@ var (
 	flagStreamFileURLs         []string
 	flagStreamOutputModes      []string
 	flagStreamReferenceTaskIDs []string
+	flagStreamExtensions       []string
+	flagStreamMetadata         []string
 )
 
 var streamCmd = &cobra.Command{
@@ -46,6 +48,12 @@ func init() {
 		"Accepted output MIME type (repeatable, e.g. text/plain, application/json)")
 	streamCmd.Flags().StringArrayVar(&flagStreamReferenceTaskIDs, "reference-task-id", nil,
 		"Reference a prior task by ID (repeatable)")
+	streamCmd.Flags().Int(flagNameHistoryLength, 0,
+		"Maximum number of history messages in the response (omit to use server default)")
+	streamCmd.Flags().StringArrayVar(&flagStreamExtensions, "extension", nil,
+		"Extension URI to declare on the message (repeatable)")
+	streamCmd.Flags().StringArrayVar(&flagStreamMetadata, "metadata", nil,
+		"Request metadata in KEY=VALUE form (repeatable)")
 	rootCmd.AddCommand(streamCmd)
 }
 
@@ -69,9 +77,18 @@ func runStream(cmd *cobra.Command, args []string) error {
 
 	msg := a2a.NewMessage(a2a.MessageRoleUser, parts...)
 	msg.ReferenceTasks = toTaskIDs(flagStreamReferenceTaskIDs)
+	msg.Extensions = flagStreamExtensions
+
+	metadata, err := parseMetadata(flagStreamMetadata)
+	if err != nil {
+		return err
+	}
+
 	req := &a2a.SendMessageRequest{
-		Message: msg,
-		Config:  buildSendConfig(flagStreamOutputModes, false),
+		Tenant:   flagTenant,
+		Message:  msg,
+		Config:   buildSendConfig(flagStreamOutputModes, false, getHistoryLength(cmd), nil),
+		Metadata: metadata,
 	}
 
 	return consumeEventStream(ctx, cmd, a2aClient.SendStreamingMessage(ctx, req), "stream error")

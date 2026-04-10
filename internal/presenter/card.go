@@ -3,6 +3,7 @@ package presenter
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/Lalcs/a2ahoy/internal/cardcheck"
@@ -22,6 +23,10 @@ func PrintAgentCard(w io.Writer, card *a2a.AgentCard) error {
 
 	if card.DocumentationURL != "" {
 		_, _ = fmt.Fprintf(w, "%s %s\n", styledLabel("Docs:       "), card.DocumentationURL)
+	}
+
+	if card.IconURL != "" {
+		_, _ = fmt.Fprintf(w, "%s %s\n", styledLabel("Icon:       "), card.IconURL)
 	}
 
 	// Capabilities
@@ -68,7 +73,124 @@ func PrintAgentCard(w io.Writer, card *a2a.AgentCard) error {
 		}
 	}
 
+	// Security Schemes
+	if len(card.SecuritySchemes) > 0 {
+		_, _ = fmt.Fprintf(w, "\n%s\n", styledDivider(fmt.Sprintf("--- Security Schemes (%d) ---", len(card.SecuritySchemes))))
+		printSecuritySchemes(w, card.SecuritySchemes)
+	}
+
+	// Security Requirements
+	if len(card.SecurityRequirements) > 0 {
+		_, _ = fmt.Fprintf(w, "\n%s\n", styledDivider("--- Security Requirements ---"))
+		for _, req := range card.SecurityRequirements {
+			parts := make([]string, 0, len(req))
+			for name, scopes := range req {
+				if len(scopes) > 0 {
+					parts = append(parts, fmt.Sprintf("%s(%s)", name, strings.Join(scopes, ", ")))
+				} else {
+					parts = append(parts, string(name))
+				}
+			}
+			_, _ = fmt.Fprintf(w, "  %s\n", strings.Join(parts, " AND "))
+		}
+	}
+
+	// Signatures
+	if len(card.Signatures) > 0 {
+		_, _ = fmt.Fprintf(w, "\n%s\n", styledDivider(fmt.Sprintf("--- Signatures (%d) ---", len(card.Signatures))))
+		for i, sig := range card.Signatures {
+			_, _ = fmt.Fprintf(w, "  %s\n", styledTag(fmt.Sprintf("[%d]", i+1)))
+			_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Protected:"), sig.Protected)
+			_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Signature:"), sig.Signature)
+			if len(sig.Header) > 0 {
+				headerParts := make([]string, 0, len(sig.Header))
+				for k, v := range sig.Header {
+					headerParts = append(headerParts, fmt.Sprintf("%s=%v", k, v))
+				}
+				_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Header:   "), strings.Join(headerParts, ", "))
+			}
+		}
+	}
+
 	return nil
+}
+
+// printSecuritySchemes renders the SecuritySchemes map in a deterministic
+// order by sorting scheme names alphabetically.
+func printSecuritySchemes(w io.Writer, schemes a2a.NamedSecuritySchemes) {
+	// Sort scheme names for deterministic output.
+	names := make([]string, 0, len(schemes))
+	for name := range schemes {
+		names = append(names, string(name))
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		scheme := schemes[a2a.SecuritySchemeName(name)]
+		switch s := scheme.(type) {
+		case a2a.APIKeySecurityScheme:
+			_, _ = fmt.Fprintf(w, "  %s %s\n", styledTag(fmt.Sprintf("[%s]", name)), "API Key")
+			_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Name:    "), s.Name)
+			_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Location:"), s.Location)
+			if s.Description != "" {
+				_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Desc:    "), s.Description)
+			}
+		case a2a.HTTPAuthSecurityScheme:
+			_, _ = fmt.Fprintf(w, "  %s %s\n", styledTag(fmt.Sprintf("[%s]", name)), "HTTP Auth")
+			_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Scheme:      "), s.Scheme)
+			if s.BearerFormat != "" {
+				_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Bearer Format:"), s.BearerFormat)
+			}
+			if s.Description != "" {
+				_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Desc:        "), s.Description)
+			}
+		case a2a.OpenIDConnectSecurityScheme:
+			_, _ = fmt.Fprintf(w, "  %s %s\n", styledTag(fmt.Sprintf("[%s]", name)), "OpenID Connect")
+			_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("URL: "), s.OpenIDConnectURL)
+			if s.Description != "" {
+				_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Desc:"), s.Description)
+			}
+		case a2a.OAuth2SecurityScheme:
+			_, _ = fmt.Fprintf(w, "  %s %s\n", styledTag(fmt.Sprintf("[%s]", name)), "OAuth2")
+			if s.Description != "" {
+				_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Desc:        "), s.Description)
+			}
+			if s.Oauth2MetadataURL != "" {
+				_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Metadata URL:"), s.Oauth2MetadataURL)
+			}
+			printOAuth2Flow(w, s.Flows)
+		case a2a.MutualTLSSecurityScheme:
+			_, _ = fmt.Fprintf(w, "  %s %s\n", styledTag(fmt.Sprintf("[%s]", name)), "Mutual TLS")
+			if s.Description != "" {
+				_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Desc:"), s.Description)
+			}
+		default:
+			_, _ = fmt.Fprintf(w, "  %s %s\n", styledTag(fmt.Sprintf("[%s]", name)), "Unknown")
+		}
+	}
+}
+
+// printOAuth2Flow renders the OAuth2 flow details indented under the scheme.
+func printOAuth2Flow(w io.Writer, flow a2a.OAuthFlows) {
+	switch f := flow.(type) {
+	case a2a.AuthorizationCodeOAuthFlow:
+		_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Flow:        "), "Authorization Code")
+		_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Auth URL:    "), f.AuthorizationURL)
+		_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Token URL:   "), f.TokenURL)
+	case a2a.ClientCredentialsOAuthFlow:
+		_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Flow:        "), "Client Credentials")
+		_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Token URL:   "), f.TokenURL)
+	case a2a.DeviceCodeOAuthFlow:
+		_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Flow:        "), "Device Code")
+		_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Device URL:  "), f.DeviceAuthorizationURL)
+		_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Token URL:   "), f.TokenURL)
+	case a2a.ImplicitOAuthFlow:
+		_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Flow:        "), "Implicit")
+		_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Auth URL:    "), f.AuthorizationURL)
+	case a2a.PasswordOAuthFlow:
+		_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Flow:        "), "Password")
+		_, _ = fmt.Fprintf(w, "      %s %s\n", styledLabel("Token URL:   "), f.TokenURL)
+	}
 }
 
 // PrintValidation renders a "--- Validation ---" section describing the

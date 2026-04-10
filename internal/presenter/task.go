@@ -53,6 +53,7 @@ func PrintTask(w io.Writer, task *a2a.Task) error {
 			_, _ = fmt.Fprintf(w, "%s ", styledTag(fmt.Sprintf("[%s]", msg.Role)))
 			printParts(w, msg.Parts)
 			printReferenceTasks(w, msg.ReferenceTasks)
+			printExtensions(w, msg.Extensions)
 		}
 	}
 
@@ -71,6 +72,7 @@ func printMessage(w io.Writer, msg *a2a.Message) error {
 	_, _ = fmt.Fprintf(w, "%s ", styledTag(fmt.Sprintf("[%s]", msg.Role)))
 	printParts(w, msg.Parts)
 	printReferenceTasks(w, msg.ReferenceTasks)
+	printExtensions(w, msg.Extensions)
 	return nil
 }
 
@@ -92,7 +94,15 @@ func printArtifact(w io.Writer, artifact *a2a.Artifact) {
 	if artifact.Description != "" {
 		_, _ = fmt.Fprintf(w, "  %s %s\n", styledLabel("Description:"), artifact.Description)
 	}
+	printExtensions(w, artifact.Extensions)
 	printParts(w, artifact.Parts)
+}
+
+func printExtensions(w io.Writer, exts []string) {
+	if len(exts) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "  %s %s\n", styledLabel("Extensions:"), strings.Join(exts, ", "))
 }
 
 func printParts(w io.Writer, parts a2a.ContentParts) {

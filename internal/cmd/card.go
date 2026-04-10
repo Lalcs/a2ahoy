@@ -42,7 +42,9 @@ func runCard(cmd *cobra.Command, args []string) error {
 		}
 		defer func() { _ = a2aClient.Destroy() }()
 
-		card, err = a2aClient.GetExtendedAgentCard(ctx, &a2a.GetExtendedAgentCardRequest{})
+		card, err = a2aClient.GetExtendedAgentCard(ctx, &a2a.GetExtendedAgentCardRequest{
+			Tenant: flagTenant,
+		})
 		if err != nil {
 			return err
 		}

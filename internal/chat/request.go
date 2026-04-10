@@ -20,7 +20,7 @@ import (
 // instruction before any attached data. The variadic extraParts
 // parameter preserves backward compatibility — existing callers that
 // pass no extra parts continue to work identically.
-func BuildChatRequest(state *State, text string, cfg *a2a.SendMessageConfig, extraParts ...*a2a.Part) *a2a.SendMessageRequest {
+func BuildChatRequest(state *State, text string, tenant string, cfg *a2a.SendMessageConfig, extraParts ...*a2a.Part) *a2a.SendMessageRequest {
 	parts := make([]*a2a.Part, 0, 1+len(extraParts))
 	parts = append(parts, a2a.NewTextPart(text))
 	parts = append(parts, extraParts...)
@@ -31,5 +31,5 @@ func BuildChatRequest(state *State, text string, cfg *a2a.SendMessageConfig, ext
 	} else {
 		msg = a2a.NewMessageForTask(a2a.MessageRoleUser, state.TaskInfo(), parts...)
 	}
-	return &a2a.SendMessageRequest{Message: msg, Config: cfg}
+	return &a2a.SendMessageRequest{Tenant: tenant, Message: msg, Config: cfg}
 }

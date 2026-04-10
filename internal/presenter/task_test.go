@@ -269,6 +269,87 @@ func TestPrintSendResultAny_UnknownType(t *testing.T) {
 	}
 }
 
+func TestPrintSendResult_MessageWithExtensions(t *testing.T) {
+	msg := &a2a.Message{
+		Role:       a2a.MessageRoleAgent,
+		Parts:      a2a.ContentParts{a2a.NewTextPart("Hello")},
+		Extensions: []string{"urn:example:ext1", "urn:example:ext2"},
+	}
+
+	var buf bytes.Buffer
+	if err := PrintSendResult(&buf, msg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	checks := []string{
+		"Extensions: urn:example:ext1, urn:example:ext2",
+	}
+	for _, want := range checks {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in output:\n%s", want, got)
+		}
+	}
+}
+
+func TestPrintSendResult_ArtifactWithExtensions(t *testing.T) {
+	task := &a2a.Task{
+		ID:        "task-1",
+		ContextID: "ctx-1",
+		Status:    a2a.TaskStatus{State: a2a.TaskStateCompleted},
+		Artifacts: []*a2a.Artifact{
+			{
+				Name:       "report.txt",
+				Extensions: []string{"urn:artifact:ext1"},
+				Parts:      a2a.ContentParts{a2a.NewTextPart("content")},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := PrintSendResult(&buf, task); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "Extensions: urn:artifact:ext1") {
+		t.Errorf("missing artifact extensions in output:\n%s", got)
+	}
+}
+
+func TestPrintSendResult_HistoryWithExtensions(t *testing.T) {
+	task := &a2a.Task{
+		ID:        "task-1",
+		ContextID: "ctx-1",
+		Status:    a2a.TaskStatus{State: a2a.TaskStateCompleted},
+		History: []*a2a.Message{
+			{
+				Role:       a2a.MessageRoleAgent,
+				Parts:      a2a.ContentParts{a2a.NewTextPart("reply")},
+				Extensions: []string{"urn:msg:ext1"},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := PrintSendResult(&buf, task); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "Extensions: urn:msg:ext1") {
+		t.Errorf("missing history message extensions in output:\n%s", got)
+	}
+}
+
+func TestPrintExtensions_Empty(t *testing.T) {
+	var buf bytes.Buffer
+	printExtensions(&buf, nil)
+	if got := buf.String(); got != "" {
+		t.Errorf("expected empty output for nil extensions, got %q", got)
+	}
+}
+
 func TestPrintSendResult_ArtifactWithoutNameAndDescription(t *testing.T) {
 	task := &a2a.Task{
 		ID:        "task-1",

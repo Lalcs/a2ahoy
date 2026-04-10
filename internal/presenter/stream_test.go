@@ -45,6 +45,42 @@ func TestPrintStreamEvent_Message(t *testing.T) {
 	}
 }
 
+func TestPrintStreamEvent_MessageWithReferenceTasks(t *testing.T) {
+	msg := &a2a.Message{
+		Role:           a2a.MessageRoleAgent,
+		Parts:          a2a.ContentParts{a2a.NewTextPart("response")},
+		ReferenceTasks: []a2a.TaskID{"task-ref-1", "task-ref-2"},
+	}
+
+	var buf bytes.Buffer
+	if err := PrintStreamEvent(&buf, msg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "Reference Tasks: task-ref-1, task-ref-2") {
+		t.Errorf("missing reference tasks in stream output:\n%s", got)
+	}
+}
+
+func TestPrintStreamEvent_MessageWithExtensions(t *testing.T) {
+	msg := &a2a.Message{
+		Role:       a2a.MessageRoleAgent,
+		Parts:      a2a.ContentParts{a2a.NewTextPart("response")},
+		Extensions: []string{"urn:ext:stream1"},
+	}
+
+	var buf bytes.Buffer
+	if err := PrintStreamEvent(&buf, msg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "Extensions: urn:ext:stream1") {
+		t.Errorf("missing extensions in stream output:\n%s", got)
+	}
+}
+
 func TestPrintStreamEvent_StatusUpdate_NoMessage(t *testing.T) {
 	event := &a2a.TaskStatusUpdateEvent{
 		TaskID:    "task-1",

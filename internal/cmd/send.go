@@ -17,6 +17,10 @@ var (
 	flagSendOutputModes      []string
 	flagSendAsync            bool
 	flagSendReferenceTaskIDs []string
+	flagSendExtensions       []string
+	flagSendMetadata         []string
+	flagSendPushURL          string
+	flagSendPushToken        string
 )
 
 var sendCmd = &cobra.Command{
@@ -36,6 +40,16 @@ func init() {
 		"Return immediately after task creation (sets ReturnImmediately=true)")
 	sendCmd.Flags().StringArrayVar(&flagSendReferenceTaskIDs, "reference-task-id", nil,
 		"Reference a prior task by ID (repeatable)")
+	sendCmd.Flags().Int(flagNameHistoryLength, 0,
+		"Maximum number of history messages in the response (omit to use server default)")
+	sendCmd.Flags().StringArrayVar(&flagSendExtensions, "extension", nil,
+		"Extension URI to declare on the message (repeatable)")
+	sendCmd.Flags().StringArrayVar(&flagSendMetadata, "metadata", nil,
+		"Request metadata in KEY=VALUE form (repeatable)")
+	sendCmd.Flags().StringVar(&flagSendPushURL, "push-url", "",
+		"Inline push notification callback URL")
+	sendCmd.Flags().StringVar(&flagSendPushToken, "push-token", "",
+		"Inline push notification validation token")
 	rootCmd.AddCommand(sendCmd)
 }
 
@@ -57,9 +71,18 @@ func runSend(cmd *cobra.Command, args []string) error {
 
 	msg := a2a.NewMessage(a2a.MessageRoleUser, parts...)
 	msg.ReferenceTasks = toTaskIDs(flagSendReferenceTaskIDs)
+	msg.Extensions = flagSendExtensions
+
+	metadata, err := parseMetadata(flagSendMetadata)
+	if err != nil {
+		return err
+	}
+
 	req := &a2a.SendMessageRequest{
-		Message: msg,
-		Config:  buildSendConfig(flagSendOutputModes, flagSendAsync),
+		Tenant:   flagTenant,
+		Message:  msg,
+		Config:   buildSendConfig(flagSendOutputModes, flagSendAsync, getHistoryLength(cmd), buildPushConfig(flagSendPushURL, flagSendPushToken)),
+		Metadata: metadata,
 	}
 
 	result, err := a2aClient.SendMessage(ctx, req)

@@ -20,6 +20,7 @@ const (
 	flagNameListPageToken        = "page-token"
 	flagNameListIncludeArtifacts = "include-artifacts"
 	flagNameListStatusAfter      = "status-after"
+	flagNameMetadata             = "metadata"
 )
 
 // taskCmd is the parent command for task-related operations.
@@ -104,6 +105,10 @@ func init() {
 	taskListCmd.Flags().String(flagNameListStatusAfter, "",
 		"Filter tasks updated after this time (RFC3339, e.g., 2026-01-01T00:00:00Z)")
 
+	// task cancel flags
+	taskCancelCmd.Flags().StringArray(flagNameMetadata, nil,
+		"Request metadata in KEY=VALUE form (repeatable)")
+
 	taskCmd.AddCommand(taskGetCmd)
 	taskCmd.AddCommand(taskCancelCmd)
 	taskCmd.AddCommand(taskListCmd)
@@ -123,15 +128,9 @@ func runTaskGet(cmd *cobra.Command, args []string) error {
 	defer func() { _ = a2aClient.Destroy() }()
 
 	req := &a2a.GetTaskRequest{
-		ID: a2a.TaskID(taskID),
-	}
-	// Changed() distinguishes "flag omitted" (use server default) from
-	// "explicit --history-length=0" (which still propagates).
-	if cmd.Flags().Changed(flagNameHistoryLength) {
-		// GetInt cannot fail here: cobra validates the flag type before
-		// RunE is invoked, so the value is always a valid int.
-		h, _ := cmd.Flags().GetInt(flagNameHistoryLength)
-		req.HistoryLength = &h
+		Tenant:        flagTenant,
+		ID:            a2a.TaskID(taskID),
+		HistoryLength: getHistoryLength(cmd),
 	}
 
 	task, err := a2aClient.GetTask(ctx, req)
@@ -157,8 +156,16 @@ func runTaskCancel(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = a2aClient.Destroy() }()
 
+	metadataStrs, _ := cmd.Flags().GetStringArray(flagNameMetadata)
+	metadata, err := parseMetadata(metadataStrs)
+	if err != nil {
+		return err
+	}
+
 	req := &a2a.CancelTaskRequest{
-		ID: a2a.TaskID(taskID),
+		Tenant:   flagTenant,
+		ID:       a2a.TaskID(taskID),
+		Metadata: metadata,
 	}
 
 	task, err := a2aClient.CancelTask(ctx, req)
@@ -190,6 +197,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 	includeArtifacts, _ := cmd.Flags().GetBool(flagNameListIncludeArtifacts)
 
 	req := &a2a.ListTasksRequest{
+		Tenant:           flagTenant,
 		ContextID:        contextID,
 		Status:           a2a.TaskState(status),
 		PageSize:         pageSize,
@@ -197,12 +205,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 		IncludeArtifacts: includeArtifacts,
 	}
 
-	// Pointer fields require Changed() to distinguish "not passed" from
-	// "passed as zero value".
-	if cmd.Flags().Changed(flagNameHistoryLength) {
-		h, _ := cmd.Flags().GetInt(flagNameHistoryLength)
-		req.HistoryLength = &h
-	}
+	req.HistoryLength = getHistoryLength(cmd)
 	if cmd.Flags().Changed(flagNameListStatusAfter) {
 		v, _ := cmd.Flags().GetString(flagNameListStatusAfter)
 		t, err := time.Parse(time.RFC3339, v)
@@ -238,7 +241,8 @@ func runTaskResubscribe(cmd *cobra.Command, args []string) error {
 	defer func() { _ = a2aClient.Destroy() }()
 
 	req := &a2a.SubscribeToTaskRequest{
-		ID: a2a.TaskID(taskID),
+		Tenant: flagTenant,
+		ID:     a2a.TaskID(taskID),
 	}
 
 	return consumeEventStream(ctx, cmd, a2aClient.SubscribeToTask(ctx, req), "SubscribeToTask failed")

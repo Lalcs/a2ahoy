@@ -166,7 +166,7 @@ func TestState_ResolveTaskID(t *testing.T) {
 
 func TestBuildChatRequest_Fresh(t *testing.T) {
 	var s State
-	req := BuildChatRequest(&s, "hello", nil)
+	req := BuildChatRequest(&s, "hello", "", nil)
 	if req == nil || req.Message == nil {
 		t.Fatal("BuildChatRequest returned nil request or message")
 	}
@@ -189,7 +189,7 @@ func TestBuildChatRequest_Fresh(t *testing.T) {
 
 func TestBuildChatRequest_Continuation(t *testing.T) {
 	s := stateWith("task-9", "ctx-9")
-	req := BuildChatRequest(&s, "follow up", nil)
+	req := BuildChatRequest(&s, "follow up", "", nil)
 	if req == nil || req.Message == nil {
 		t.Fatal("BuildChatRequest returned nil request or message")
 	}
@@ -210,7 +210,7 @@ func TestBuildChatRequest_WithExtraParts(t *testing.T) {
 	extra1.Filename = "test.png"
 	extra2 := a2a.NewFileURLPart("https://example.com/doc.pdf", "")
 
-	req := BuildChatRequest(&s, "analyze", nil, extra1, extra2)
+	req := BuildChatRequest(&s, "analyze", "", nil, extra1, extra2)
 	if req == nil || req.Message == nil {
 		t.Fatal("BuildChatRequest returned nil request or message")
 	}
@@ -235,7 +235,7 @@ func TestBuildChatRequest_ContinuationWithExtraParts(t *testing.T) {
 	s := stateWith("task-10", "ctx-10")
 	extra := a2a.NewRawPart([]byte("data"))
 
-	req := BuildChatRequest(&s, "more info", nil, extra)
+	req := BuildChatRequest(&s, "more info", "", nil, extra)
 	if req == nil || req.Message == nil {
 		t.Fatal("BuildChatRequest returned nil request or message")
 	}
@@ -255,7 +255,7 @@ func TestBuildChatRequest_WithConfig(t *testing.T) {
 	cfg := &a2a.SendMessageConfig{
 		AcceptedOutputModes: []string{"text/plain", "application/json"},
 	}
-	req := BuildChatRequest(&s, "hello", cfg)
+	req := BuildChatRequest(&s, "hello", "", cfg)
 	if req == nil || req.Message == nil {
 		t.Fatal("BuildChatRequest returned nil request or message")
 	}
@@ -272,7 +272,7 @@ func TestBuildChatRequest_WithConfig(t *testing.T) {
 
 func TestBuildChatRequest_NilConfig(t *testing.T) {
 	var s State
-	req := BuildChatRequest(&s, "hello", nil)
+	req := BuildChatRequest(&s, "hello", "", nil)
 	if req == nil || req.Message == nil {
 		t.Fatal("BuildChatRequest returned nil request or message")
 	}

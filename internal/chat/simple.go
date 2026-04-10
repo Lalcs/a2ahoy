@@ -36,7 +36,7 @@ const chatMaxLineBytes = 1 << 20
 // per-turn signal context so Ctrl+C during streaming cancels only the
 // in-flight request and returns to the prompt, while Ctrl+C at the
 // prompt exits the REPL via the default Go signal handler.
-func RunSimple(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, baseURL string, useJSON bool, initialParts []*a2a.Part, cfg *a2a.SendMessageConfig) error {
+func RunSimple(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, baseURL string, useJSON bool, initialParts []*a2a.Part, tenant string, cfg *a2a.SendMessageConfig) error {
 	printWelcomeBanner(os.Stdout, card, baseURL)
 
 	state := &State{}
@@ -73,7 +73,7 @@ func RunSimple(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, bas
 
 		// Regular message → streaming turn. Attach initial file parts
 		// on the first turn only, then clear them.
-		if err := runSimpleTurn(ctx, c, state, text, useJSON, initialParts, cfg); err != nil {
+		if err := runSimpleTurn(ctx, c, state, text, useJSON, initialParts, tenant, cfg); err != nil {
 			// Errors print but do NOT exit the REPL unless the top-level
 			// ctx was cancelled (user hit Ctrl+C at the outer level, not
 			// via per-turn signal, or EOF upstream). A per-turn cancel
@@ -90,8 +90,8 @@ func RunSimple(ctx context.Context, c client.A2AClient, card *a2a.AgentCard, bas
 // runSimpleTurn performs one streaming turn: builds the request, sets
 // up a per-turn signal-notify context, iterates the event stream, and
 // updates state with the last observed TaskInfo on success.
-func runSimpleTurn(ctx context.Context, c client.A2AClient, state *State, text string, useJSON bool, extraParts []*a2a.Part, cfg *a2a.SendMessageConfig) error {
-	req := BuildChatRequest(state, text, cfg, extraParts...)
+func runSimpleTurn(ctx context.Context, c client.A2AClient, state *State, text string, useJSON bool, extraParts []*a2a.Part, tenant string, cfg *a2a.SendMessageConfig) error {
+	req := BuildChatRequest(state, text, tenant, cfg, extraParts...)
 
 	// Per-turn signal.NotifyContext: installs a SIGINT handler for the
 	// duration of this turn only. turnCancel() below uninstalls it so

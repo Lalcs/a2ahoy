@@ -23,6 +23,8 @@ func printStreamEventAny(w io.Writer, event any) error {
 	case *a2a.Message:
 		_, _ = fmt.Fprintf(w, "%s ", styledTag(fmt.Sprintf("[%s]", v.Role)))
 		printParts(w, v.Parts)
+		printReferenceTasks(w, v.ReferenceTasks)
+		printExtensions(w, v.Extensions)
 
 	case *a2a.TaskStatusUpdateEvent:
 		_, _ = fmt.Fprintf(w, "%s %s", styledTag("[status]"), styledTaskState(v.Status.State))
