@@ -27,7 +27,7 @@ func resetGlobalFlags(t *testing.T) {
 	flagGCPAuth = false
 	flagJSON = false
 	flagVertexAI = false
-	flagV03RESTMount = false
+	flagNoV03Mount = false
 	flagExtended = false
 	flagNoColor = false
 	flagHeaders = nil
@@ -1523,22 +1523,38 @@ func TestRootCommand_NoColorFlag(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// v03-rest-mount flag integration
+// no-v03-mount flag integration
 // ---------------------------------------------------------------------------
 
-func TestRunSend_WithV03RESTMount(t *testing.T) {
+func TestRunSend_WithNoV03Mount(t *testing.T) {
 	resetGlobalFlags(t)
 	ts := a2aTestServer(t)
 
-	rootCmd.SetArgs([]string{"--v03-rest-mount", "send", ts.URL, "hello"})
+	rootCmd.SetArgs([]string{"--no-v03-mount", "send", ts.URL, "hello"})
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 
-	// The v03-rest-mount flag only modifies v0.3 HTTP+JSON interfaces.
-	// Our test card uses JSONRPC v1.0 so the rewrite is a no-op.
+	// The no-v03-mount flag only disables the default v0.3 HTTP+JSON
+	// rewrite. Our test card uses JSONRPC v1.0 so the flag is a no-op.
 	// This test verifies the flag is accepted without error.
 	if err := rootCmd.Execute(); err != nil {
-		t.Fatalf("runSend --v03-rest-mount failed: %v", err)
+		t.Fatalf("runSend --no-v03-mount failed: %v", err)
+	}
+}
+
+func TestLegacyV03RESTMountFlagRejected(t *testing.T) {
+	resetGlobalFlags(t)
+
+	rootCmd.SetArgs([]string{"--v03-rest-mount", "version"})
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected unknown flag error")
+	}
+	if !strings.Contains(err.Error(), "unknown flag: --v03-rest-mount") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

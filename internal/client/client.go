@@ -37,8 +37,9 @@ type Options struct {
 	// V03RESTMount, when true, rewrites HTTP+JSON v0.3 interface URLs to
 	// the "/v1" mount-point convention used by the Python a2a-sdk REST
 	// client, Google ADK, and Vertex AI Agent Engine's non-Vertex route.
-	// Disabled by default so native a2a-go v2 spec-compliant servers are
-	// addressed as-is. Applies to both standard and Vertex AI code paths.
+	// Disabled in the Options zero value so non-CLI callers opt in
+	// explicitly; the CLI chooses its own default above this package.
+	// Applies to both standard and Vertex AI code paths.
 	// See applyV03RESTMountPrefix for the full rationale.
 	V03RESTMount bool
 	// Headers holds raw "KEY=VALUE" strings from the --header flag;

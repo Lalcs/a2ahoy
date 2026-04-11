@@ -608,10 +608,10 @@ func TestApplyV03RESTMountPrefix(t *testing.T) {
 }
 
 // TestNew_V03HTTPJSON_V03RESTMountGating is an end-to-end regression test
-// for the opt-in v0.3 REST mount point compatibility rewrite. It serves a
+// for the v0.3 REST mount point compatibility rewrite. It serves a
 // v0.3 agent card whose preferredTransport is "HTTP+JSON" and asserts that:
 //
-//   - with Options.V03RESTMount == false (default), the URL is preserved
+//   - with Options.V03RESTMount == false (zero value), the URL is preserved
 //     as-is so native a2a-go v2 spec-compliant peers are addressed as
 //     the server advertised them;
 //   - with Options.V03RESTMount == true, applyV03RESTMountPrefix rewrites
@@ -650,7 +650,7 @@ func TestNew_V03HTTPJSON_V03RESTMountGating(t *testing.T) {
 		wantSuffix   string
 	}{
 		{
-			name:         "default (opt-out) preserves raw URL",
+			name:         "zero value preserves raw URL",
 			v03RESTMount: false,
 			wantSuffix:   "", // == ts.URL, no /v1 suffix
 		},

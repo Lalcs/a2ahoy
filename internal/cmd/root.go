@@ -20,7 +20,7 @@ var (
 	flagGCPAuth        bool
 	flagJSON           bool
 	flagVertexAI       bool
-	flagV03RESTMount   bool
+	flagNoV03Mount     bool
 	flagNoColor        bool
 	flagVerbose        bool
 	flagHeaders        []string
@@ -90,7 +90,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagGCPAuth, "gcp-auth", false, "Enable GCP ADC authentication (ID token as Bearer)")
 	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output raw JSON")
 	rootCmd.PersistentFlags().BoolVar(&flagVertexAI, "vertex-ai", false, "Treat the URL as a Vertex AI Agent Engine endpoint")
-	rootCmd.PersistentFlags().BoolVar(&flagV03RESTMount, "v03-rest-mount", false, "Apply A2A v0.3 REST /v1 mount-point prefix workaround (for Python a2a-sdk / ADK / Vertex AI servers)")
+	rootCmd.PersistentFlags().BoolVar(&flagNoV03Mount, "no-v03-mount", false, "Use advertised A2A v0.3 HTTP+JSON URLs as-is (disable the default /v1 mount-point rewrite)")
 	rootCmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable colored output")
 	rootCmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "Dump HTTP request/response traces to stderr")
 	// StringArrayVar (not StringSliceVar) so values with commas are not split,
@@ -119,7 +119,7 @@ func clientOptions(baseURL string) client.Options {
 		BaseURL:            baseURL,
 		GCPAuth:            flagGCPAuth,
 		VertexAI:           flagVertexAI,
-		V03RESTMount:       flagV03RESTMount,
+		V03RESTMount:       !flagNoV03Mount,
 		Verbose:            flagVerbose,
 		VerboseOutput:      verboseOutput,
 		Headers:            flagHeaders,

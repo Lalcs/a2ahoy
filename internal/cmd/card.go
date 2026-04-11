@@ -53,8 +53,9 @@ func runCard(cmd *cobra.Command, args []string) error {
 		// a full A2A client is unnecessary and would fail on v0.3-only servers
 		// that lack supportedInterfaces. ResolveCard handles both v1.0 and v0.3
 		// formats and skips client creation entirely.
-		// V03RESTMount is intentionally disabled so the card subcommand
-		// displays raw URLs from the server rather than rewritten URLs.
+		// V03RESTMount is intentionally disabled here even though the CLI
+		// defaults it on for protocol calls, so `a2ahoy card` keeps showing
+		// the raw URLs advertised by the server.
 		opts := clientOptions(baseURL)
 		opts.V03RESTMount = false
 		var err error

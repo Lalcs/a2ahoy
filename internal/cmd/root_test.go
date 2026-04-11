@@ -41,6 +41,7 @@ func TestRootCommand_HasPersistentFlags(t *testing.T) {
 		{"gcp-auth"},
 		{"json"},
 		{"vertex-ai"},
+		{"no-v03-mount"},
 		{"header"},
 		{"bearer-token"},
 		{"verbose"},
@@ -57,6 +58,31 @@ func TestRootCommand_HasPersistentFlags(t *testing.T) {
 		if f == nil {
 			t.Errorf("missing persistent flag %q", tt.flag)
 		}
+	}
+}
+
+func TestRootCommand_LegacyV03RESTMountFlagRemoved(t *testing.T) {
+	if f := rootCmd.PersistentFlags().Lookup("v03-rest-mount"); f != nil {
+		t.Fatalf("unexpected legacy persistent flag %q", f.Name)
+	}
+}
+
+func TestClientOptions_V03RESTMountEnabledByDefault(t *testing.T) {
+	resetGlobalFlags(t)
+
+	opts := clientOptions("https://example.com")
+	if !opts.V03RESTMount {
+		t.Fatal("V03RESTMount should default to enabled in CLI client options")
+	}
+}
+
+func TestClientOptions_NoV03MountDisablesRewrite(t *testing.T) {
+	resetGlobalFlags(t)
+	flagNoV03Mount = true
+
+	opts := clientOptions("https://example.com")
+	if opts.V03RESTMount {
+		t.Fatal("V03RESTMount should be disabled when --no-v03-mount is set")
 	}
 }
 

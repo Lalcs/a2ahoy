@@ -230,7 +230,7 @@ a2ahoy update --force
 |--------------------|----------------------------------------------------------------------------------------------------------------------------------------|
 | `--gcp-auth`       | Enable GCP authentication using Application Default Credentials                                                                        |
 | `--vertex-ai`      | Treat the URL as a Vertex AI Agent Engine endpoint                                                                                     |
-| `--v03-rest-mount` | Apply an A2A v0.3 REST `/v1` mount-point rewrite to card URLs for Python `a2a-sdk` / Google ADK / Vertex AI Agent Engine peers.        |
+| `--no-v03-mount`  | Use advertised A2A v0.3 HTTP+JSON URLs as-is. Disables the default `/v1` mount-point rewrite for Python `a2a-sdk` / Google ADK / Vertex AI Agent Engine peers. |
 | `--bearer-token`   | Set a Bearer token for authentication. Falls back to the `A2A_BEARER_TOKEN` env var. Cannot be combined with `--gcp-auth` or `--vertex-ai`. |
 | `--json`           | Output raw indented JSON instead of human-readable format                                                                              |
 | `--header`         | Add a custom HTTP header in `KEY=VALUE` form. Repeat the flag to send multiple headers.                                                |
@@ -284,10 +284,10 @@ it with `--vertex-ai`; see the next section for details.
 
 > **Note**: \*Some v0.3 servers (Python `a2a-sdk`, Google ADK's `to_a2a()`,
 > Vertex AI Agent Engine's non-Vertex route) mount HTTP+JSON routes under a
-> `/v1` prefix that their agent cards do not advertise. Pass `--v03-rest-mount`
-> to rewrite card URLs client-side so `send` / `stream` / `get` / `cancel` / `list`
-> resolve against the correct path. Native a2a-go v0.3 servers that advertise
-> the full URL should be addressed as-is (the default).
+> `/v1` prefix that their agent cards do not advertise. `a2ahoy` rewrites
+> those card URLs client-side by default so protocol calls resolve against the
+> correct path. Pass `--no-v03-mount` when talking to native a2a-go v0.3
+> servers or any peer that already advertises the full mounted URL.
 
 > **Note**: A2A v1.0 changes the JSON-RPC method names (`SendMessage` instead
 > of `message/send`, etc.) and REST endpoint layout relative to v0.3. v1.0
