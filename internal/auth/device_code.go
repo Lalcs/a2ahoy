@@ -154,7 +154,9 @@ func NewDeviceCodeInterceptor(ctx context.Context, cfg DeviceCodeConfig, promptO
 	}
 
 	// Step 2: Display prompt to user.
-	printDeviceCodePrompt(promptOut, resp)
+	if err := printDeviceCodePrompt(promptOut, resp); err != nil {
+		return nil, fmt.Errorf("failed to write device code prompt: %w", err)
+	}
 
 	// Step 3: Poll for token.
 	interval := resp.Interval
@@ -166,7 +168,9 @@ func NewDeviceCodeInterceptor(ctx context.Context, cfg DeviceCodeConfig, promptO
 		return nil, err
 	}
 
-	fmt.Fprintln(promptOut, "Authentication successful!")
+	if _, err := fmt.Fprintln(promptOut, "Authentication successful!"); err != nil {
+		return nil, fmt.Errorf("failed to write authentication success message: %w", err)
+	}
 
 	return &DeviceCodeInterceptor{token: token}, nil
 }
@@ -192,16 +196,30 @@ func (d *DeviceCodeInterceptor) Before(ctx context.Context, req *a2aclient.Reque
 
 // printDeviceCodePrompt writes the user-facing authentication instructions
 // to the given writer.
-func printDeviceCodePrompt(w io.Writer, resp *DeviceCodeResponse) {
+func printDeviceCodePrompt(w io.Writer, resp *DeviceCodeResponse) error {
 	if resp.VerificationURIComplete != "" {
-		fmt.Fprintln(w, "To authenticate, open this URL in your browser:")
-		fmt.Fprintf(w, "  %s\n\n", resp.VerificationURIComplete)
-		fmt.Fprintf(w, "Or visit %s and enter code: %s\n", resp.VerificationURI, resp.UserCode)
+		if _, err := fmt.Fprintln(w, "To authenticate, open this URL in your browser:"); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "  %s\n\n", resp.VerificationURIComplete); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "Or visit %s and enter code: %s\n", resp.VerificationURI, resp.UserCode); err != nil {
+			return err
+		}
 	} else {
-		fmt.Fprintf(w, "To authenticate, visit: %s\n", resp.VerificationURI)
-		fmt.Fprintf(w, "Enter code: %s\n", resp.UserCode)
+		if _, err := fmt.Fprintf(w, "To authenticate, visit: %s\n", resp.VerificationURI); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "Enter code: %s\n", resp.UserCode); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintln(w, "Waiting for authentication...")
+	if _, err := fmt.Fprintln(w, "Waiting for authentication..."); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // requestDeviceCode sends the initial POST to the device authorization
@@ -224,7 +242,9 @@ func requestDeviceCode(ctx context.Context, httpClient *http.Client, cfg DeviceC
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -300,7 +320,9 @@ func requestToken(ctx context.Context, httpClient *http.Client, tokenURL, client
 	if err != nil {
 		return "", false, fmt.Errorf("token request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

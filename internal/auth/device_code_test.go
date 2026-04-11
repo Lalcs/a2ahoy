@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,6 +31,18 @@ func withInstantPoll(t *testing.T) {
 	}
 }
 
+func mustWriteJSON(w http.ResponseWriter, v any) {
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		panic(err)
+	}
+}
+
+func mustWriteString(w http.ResponseWriter, s string) {
+	if _, err := io.WriteString(w, s); err != nil {
+		panic(err)
+	}
+}
+
 // newDeviceCodeServer creates a test server that handles both the device
 // authorization endpoint (/device/code) and the token endpoint (/token).
 // pendingCount controls how many "authorization_pending" responses the
@@ -53,7 +65,7 @@ func newDeviceCodeServer(t *testing.T, pendingCount int, slowDownAt int, finalEr
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(DeviceCodeResponse{
+		mustWriteJSON(w, DeviceCodeResponse{
 			DeviceCode:      "test-device-code",
 			UserCode:        "TEST-CODE",
 			VerificationURI: "https://example.com/device",
@@ -74,7 +86,7 @@ func newDeviceCodeServer(t *testing.T, pendingCount int, slowDownAt int, finalEr
 		if slowDownAt > 0 && count == slowDownAt {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(tokenErrorResponse{Error: "slow_down"})
+			mustWriteJSON(w, tokenErrorResponse{Error: "slow_down"})
 			return
 		}
 
@@ -82,7 +94,7 @@ func newDeviceCodeServer(t *testing.T, pendingCount int, slowDownAt int, finalEr
 		if count <= pendingCount {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(tokenErrorResponse{Error: "authorization_pending"})
+			mustWriteJSON(w, tokenErrorResponse{Error: "authorization_pending"})
 			return
 		}
 
@@ -90,13 +102,13 @@ func newDeviceCodeServer(t *testing.T, pendingCount int, slowDownAt int, finalEr
 		if finalError != "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(tokenErrorResponse{Error: finalError})
+			mustWriteJSON(w, tokenErrorResponse{Error: finalError})
 			return
 		}
 
 		// Success.
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(tokenResponse{
+		mustWriteJSON(w, tokenResponse{
 			AccessToken: "test-access-token",
 			TokenType:   "Bearer",
 		})
@@ -197,7 +209,7 @@ func TestNewDeviceCodeInterceptor_Expired(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/device/code", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(DeviceCodeResponse{
+		mustWriteJSON(w, DeviceCodeResponse{
 			DeviceCode:      "test-device-code",
 			UserCode:        "TEST-CODE",
 			VerificationURI: "https://example.com/device",
@@ -208,7 +220,7 @@ func TestNewDeviceCodeInterceptor_Expired(t *testing.T) {
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(tokenErrorResponse{Error: "authorization_pending"})
+		mustWriteJSON(w, tokenErrorResponse{Error: "authorization_pending"})
 	})
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -289,7 +301,7 @@ func TestNewDeviceCodeInterceptor_ContextCancelled(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/device/code", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(DeviceCodeResponse{
+		mustWriteJSON(w, DeviceCodeResponse{
 			DeviceCode:      "test-device-code",
 			UserCode:        "TEST-CODE",
 			VerificationURI: "https://example.com/device",
@@ -300,7 +312,7 @@ func TestNewDeviceCodeInterceptor_ContextCancelled(t *testing.T) {
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(tokenErrorResponse{Error: "authorization_pending"})
+		mustWriteJSON(w, tokenErrorResponse{Error: "authorization_pending"})
 	})
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -359,7 +371,7 @@ func TestNewDeviceCodeInterceptor_VerificationURIComplete(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/device/code", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(DeviceCodeResponse{
+		mustWriteJSON(w, DeviceCodeResponse{
 			DeviceCode:              "test-device-code",
 			UserCode:                "TEST-CODE",
 			VerificationURI:         "https://example.com/device",
@@ -370,7 +382,7 @@ func TestNewDeviceCodeInterceptor_VerificationURIComplete(t *testing.T) {
 	})
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(tokenResponse{AccessToken: "test-access-token", TokenType: "Bearer"})
+		mustWriteJSON(w, tokenResponse{AccessToken: "test-access-token", TokenType: "Bearer"})
 	})
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -523,15 +535,13 @@ func TestNewDeviceCodeInterceptor_Before_AppendSemantics(t *testing.T) {
 func TestRequestDeviceCode_ScopesSent(t *testing.T) {
 	var capturedBody string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := fmt.Fprintf(w, "")
-		_ = body
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, "bad form", http.StatusBadRequest)
 			return
 		}
 		capturedBody = r.PostForm.Encode()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(DeviceCodeResponse{
+		mustWriteJSON(w, DeviceCodeResponse{
 			DeviceCode:      "dc",
 			UserCode:        "UC",
 			VerificationURI: "https://example.com/device",
@@ -561,7 +571,7 @@ func TestRequestDeviceCode_MissingFields(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		// Missing device_code, user_code, verification_uri.
-		json.NewEncoder(w).Encode(DeviceCodeResponse{})
+		mustWriteJSON(w, DeviceCodeResponse{})
 	}))
 	t.Cleanup(ts.Close)
 
@@ -582,7 +592,7 @@ func TestPollForToken_NonJSONError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "<html>error</html>")
+		mustWriteString(w, "<html>error</html>")
 	}))
 	t.Cleanup(ts.Close)
 
@@ -624,7 +634,7 @@ func TestRequestToken_UnknownError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(tokenErrorResponse{Error: "some_unknown_error"})
+		mustWriteJSON(w, tokenErrorResponse{Error: "some_unknown_error"})
 	}))
 	t.Cleanup(ts.Close)
 
@@ -650,7 +660,7 @@ func TestRequestToken_EmptyAccessToken(t *testing.T) {
 	withInstantPoll(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(tokenResponse{TokenType: "Bearer"}) // no access_token
+		mustWriteJSON(w, tokenResponse{TokenType: "Bearer"}) // no access_token
 	}))
 	t.Cleanup(ts.Close)
 
@@ -667,7 +677,7 @@ func TestRequestToken_InvalidSuccessJSON(t *testing.T) {
 	withInstantPoll(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, "not-json")
+		mustWriteString(w, "not-json")
 	}))
 	t.Cleanup(ts.Close)
 
@@ -682,7 +692,7 @@ func TestPollForToken_ExpiredToken(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(tokenErrorResponse{Error: "expired_token"})
+		mustWriteJSON(w, tokenErrorResponse{Error: "expired_token"})
 	}))
 	t.Cleanup(ts.Close)
 
